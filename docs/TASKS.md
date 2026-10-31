@@ -57,7 +57,8 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 - [~] **1.3** `modules/network`: VPC, 5 subnets, routes, IGW, standalone fw-ips ENI, flow logs · C
   - Note: private routes show as `blackhole` until fw-ips attaches; the S3 endpoint moved to T2.3
   - Verify: plan shows no NAT Gateway, ALB or interface endpoint
-- [ ] **1.4** `modules/security`: security groups and NACLs from §4 · C
+- [~] **1.4** `modules/security`: security groups done, NACLs still to do (§4) · C
+  - Open: checkov `CKV2_AWS_5` until the compute module attaches the groups
   - Verify: `checkov` passes; line-by-line review against the §4 table
 - [ ] **1.5a** Hand-build the network, security groups and flow logs in the console, without reading the modules · M
   - Verify: `aws ec2 describe-subnets` shows the 5 CIDRs from §2; `aws ec2 describe-flow-logs` shows `ACTIVE`

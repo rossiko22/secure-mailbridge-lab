@@ -99,6 +99,19 @@ All instances: IMDSv2 required · SSM agent (admin access, no SSH from internet)
 | sg-mon | TCP 3000 (Grafana) | 10.8.1.0/24 |
 | all | TCP 9100 (node_exporter), 9187 (postgres_exporter on db) | sg-mon |
 
+**Egress (explicit, stateful replies need no rule):**
+
+| SG | Outbound | To |
+|---|---|---|
+| sg-fw | all | 0.0.0.0/0 (forwarded traffic; nftables applies the policy) |
+| sg-proxy, sg-app, sg-db, sg-siem | TCP 443, UDP 123 | 0.0.0.0/0 (through fw-ips) |
+| | TCP/UDP 53 | 10.0.1.10/32 (Unbound) |
+| sg-proxy, sg-app, sg-db | TCP 1514, 1515 | sg-siem |
+| sg-proxy | TCP 3000 | sg-app |
+| sg-app | TCP 5432 | sg-db |
+
+The VPC default security group has no rules.
+
 Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nftables on fw-ips.
 
 **nftables on fw-ips (core rules):**

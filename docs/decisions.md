@@ -12,7 +12,9 @@ Format: date · decision · why
 - 2026-10-31 · Build order is db → app → proxy · each host is tested against its real dependency
 - 2026-10-31 · Task 1.9 split into NAT first, full nftables policy second · private hosts need NAT to reach SSM, and a smaller first step is easier to debug
 - 2026-10-31 · GitHub repo is public · free branch protection can enforce merge on green CI
+- 2026-10-31 · Security groups live in modules/security, separate from modules/network · routing and access control stay independently reviewable
 - 2026-10-31 · S3 gateway endpoint is deferred to T2.3, with one private route table until then · nothing in Tier 1 uses it
+- 2026-10-31 · Security groups use explicit egress per group · a compromised host is limited at its own interface as well as by nftables
 - 2026-10-31 · fw-ips ENI is a standalone resource in modules/network · routes can target it before the instance exists and survive instance replacement
 - 2026-10-31 · Each layer is built by hand first, then compared with code, then rebuilt from code · hands-on understanding plus a proven, repeatable deployment
 - 2026-10-31 · VPC flow logs go to an S3 bucket in persistent · evidence covers traffic that never crosses fw-ips and survives lab teardown, at lower cost than CloudWatch
