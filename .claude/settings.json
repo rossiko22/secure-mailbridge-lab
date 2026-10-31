@@ -16,5 +16,18 @@
       "Bash(ansible-playbook:*)",
       "Bash(aws:*)"
     ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-lessons.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
   }
 }

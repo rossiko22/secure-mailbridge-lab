@@ -13,7 +13,7 @@ it is verified, and the relevant doc section is updated.
 ## Current position
 
 - **Phase:** 1, Tier 1 on AWS (0.5–0.7 still open; 0.5 deferred)
-- **Next task:** 1.5c (destroy the hand build and rebuild from code)
+- **Next task:** 1.6 (fw-ips), after agreeing the approach
 
 ## Open items
 
@@ -64,8 +64,8 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
   - Verify: `aws ec2 describe-subnets` shows the 5 CIDRs from §2; `aws ec2 describe-flow-logs` shows `ACTIVE`
 - [x] **1.5b** State bucket by hand, `aws login`, `terraform/lab` root stack (network only, written by Marko), import the hand build, compare · M+C
   - Verify: `terraform plan` reports no changes
-- [ ] **1.5c** Destroy the hand build and rebuild from code · M
-  - Verify: the 1.5a checks pass again
+- [ ] **1.5c** Deferred to 1.20: destroy the hand build and rebuild from code · M
+  - Verify: the 1.5a checks pass again; `terraform plan` reports no changes
 
 **fw-ips**
 - [ ] **1.6** `modules/compute` and IAM: fw-ips instance, IMDSv2, encrypted gp3, `credit_specification = "standard"`, source/dest check off, Elastic IP and `vpn.<domain>` record · C
@@ -105,7 +105,7 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
   - Verify: events visible; trial end date noted in `progress.md`
 - [ ] **1.19** End-to-end check: VPN, `https://mail.<domain>`, OAuth login with test accounts · M+C
   - Verify: `nmap -sU -p 1194` and a TCP scan from outside show only UDP 1194 open
-- [ ] **1.20** `make up` rebuilds the lab from clean; second Ansible run is idempotent · M+C
+- [ ] **1.20** Includes the deferred network rebuild (1.5c): `make up` rebuilds the lab from clean; second Ansible run is idempotent · M+C
   - Verify: second run reports `changed=0`
 - [ ] **1.21** Update docs for any deviation; confirm teardown works · M+C
   - Verify: after `terraform destroy` of `lab` (approved), no billable lab resources remain

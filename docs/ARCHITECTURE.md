@@ -227,7 +227,7 @@ Everything runs on AWS. There is no VPS phase, and no VPS is used anywhere in th
 3. Tier 2: monitoring, CI, backups + restore test
 4. Tier 3: k3s for app tier, vuln scanning (Nuclei/Greenbone), ISO 27001/NIS2 controls map
 
-**Method for each layer:** build by hand → test → compare with code (`terraform import` + `plan`, or `ansible-playbook --check --diff`) → destroy and rebuild from code → re-test. The final state is always Terraform + Ansible.
+**Method for each layer:** build by hand → test → compare with code (`terraform import` + `plan`, or `ansible-playbook --check --diff`) → destroy and rebuild from code → re-test. The final state is always Terraform + Ansible. Exception: the network layer stays up between sessions and its rebuild test is deferred to task 1.20; paid resources are still removed after each session.
 
 **Do not start a tier until the previous tier's write-up is done.**
 
@@ -240,7 +240,7 @@ secure-mailbridge-lab/
   terraform/
     modules/      network/ security/ compute/   (shared)
     persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, flow log bucket, state bucket, Route 53 zone, ECR repository, Budget
-    lab/          destroyed after every session: VPC, subnets, SGs, VMs, Elastic IP, vpn.<domain> record (uses modules/)
+    lab/          VPC, subnets, SGs (free, kept between sessions) · VMs, Elastic IP, vpn.<domain> record (removed after every session) (uses modules/)
   ansible/        roles: fw-ips/ proxy/ app/ db/ siem/ mon/
   suricata-rules/ custom rules + test pcaps
   docs/           ARCHITECTURE.md · TASKS.md · decisions.md · rationale.md · progress.md · threat-model.md · findings-report.md · iso27001-map.md

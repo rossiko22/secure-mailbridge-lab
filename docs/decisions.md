@@ -21,3 +21,4 @@ Format: date · decision · why
 - 2026-10-31 · NACLs allow ephemeral return ports and deny app and db service ports just before that rule · stateless return rules would otherwise reopen ports 3000, 5432 and 1514-1515 to every subnet
 - 2026-10-31 · Laptop Terraform authenticates with `aws login` · temporary credentials, with no long-lived access key on disk
 - 2026-10-31 · Terraform state lives in a versioned S3 bucket with native locking; the bucket name stays out of the repo · state survives laptop loss, old versions can be recovered, and the account ID stays private
+- 2026-10-31 · Rebuild test 1.5c deferred; the hand-built network stays up between sessions · Marko chose to keep the hand build, and the network is free while idle; paid resources are still removed after each session

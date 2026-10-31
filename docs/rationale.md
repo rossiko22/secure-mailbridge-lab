@@ -225,3 +225,17 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** A small storage cost, a bootstrap step that cannot be fully automated, and a manual `-backend-config=backend.hcl` on init.
 
 **Verify once built.** `aws s3api get-bucket-versioning` shows `Enabled`. After `terraform apply`, `aws s3 ls` shows the state object. `git check-ignore backend.hcl` prints the name.
+
+---
+
+## 16. Keep the hand-built network, defer the rebuild test (2026-10-31)
+
+**Problem.** The layer loop ends with destroying the hand build and rebuilding from code. Marko prefers to keep the network built by hand.
+
+**Options.** A: rebuild now. B: defer the rebuild and build fw-ips on the existing network.
+
+**Chosen: B.** Terraform already manages all 114 resources and `plan` reports no changes, so the network is fully under code control. VPCs, subnets, route tables, security groups, NACLs and an unattached ENI have no hourly charge, so nothing needs to be torn down to save money. Paid resources, starting with instances and the Elastic IP, are still removed after each session.
+
+**Trade-off accepted.** The code has proven that it describes the network, not that it can create it. Ordering problems stay hidden until the first full rebuild, which then involves more resources. `make up` cannot count as verified for this layer until that test has run.
+
+**Verify once built.** Run `terraform destroy` and `terraform apply` once before Tier 1 closes (task 1.20), then re-run the 1.5a checks. `terraform plan` reports no changes.

@@ -22,4 +22,5 @@ Update at the end of every session: what was done, what's verified, next step.
 - Done: state bucket built by hand and checked; `aws login` working as marko-admin; terraform/lab root stack written (local validate only, nothing planned or applied).
 - Done: 114 hand-built resources imported into Terraform; the only drift was two missing `Name` tags; final `terraform plan` reports no changes (1.5b). Fixed NACL `for_each` to use static keys.
 - Verified: `terraform plan -destroy` shows 114 to destroy and nothing else; the destroy itself has not been run.
-- Next: 1.5c: run `aws login` if needed, `terraform destroy`, `terraform apply`, then re-run the 1.5a checks. Use `-no-color` when grepping Terraform output. NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.
+- Decided: keep the hand-built network; rebuild test deferred to 1.20 (decision 16).
+- Next: fw-ips (task 1.6). Use `-no-color` when grepping Terraform output. NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.

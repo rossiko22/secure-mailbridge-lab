@@ -34,6 +34,7 @@ PostgreSQL · Wazuh · Docker · eu-central-1
 ## Repo conventions
 - Branch per change, Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`), merge only on green CI.
 - `docs/progress.md`: update at the end of every session — what was done, what's verified, next step.
+- `docs/lessons.md`: at the end of every session, without being asked, append a section headed `## YYYY-MM-DD`. If that date already has a section, add to it. Write it as an in-depth student lecture: everything we did, what we chose and why, the alternatives, how it fits the big picture, mistakes and what they taught, and interview questions. The end of a session is when I say we're stopping or wrapping up. Never include secrets, account IDs or live resource IDs, because the repo is public.
 - Every design decision gets documented, same format every time:
   - `docs/decisions.md`: one line (date · decision · why).
   - `docs/rationale.md`: a short section (about half a page) with the problem, the options considered, what we chose and why, the trade-off we accepted, and how to verify it once built.
