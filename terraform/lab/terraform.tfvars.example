@@ -1,0 +1,1 @@
+flow_log_bucket_arn = "arn:aws:s3:::example-flow-logs-bucket"

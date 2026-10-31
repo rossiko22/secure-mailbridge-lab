@@ -112,10 +112,11 @@ locals {
 }
 
 resource "aws_network_acl" "this" {
-  for_each = var.subnet_ids
+  # Keys come from subnet_cidrs because they are known before apply; subnet IDs are not.
+  for_each = var.subnet_cidrs
 
   vpc_id     = var.vpc_id
-  subnet_ids = [each.value]
+  subnet_ids = [var.subnet_ids[each.key]]
 
   tags = { Name = "${var.name}-${each.key}" }
 }

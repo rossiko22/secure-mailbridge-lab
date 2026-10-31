@@ -13,7 +13,7 @@ it is verified, and the relevant doc section is updated.
 ## Current position
 
 - **Phase:** 1, Tier 1 on AWS (0.5–0.7 still open; 0.5 deferred)
-- **Next task:** 1.5b (compare the hand-built network with code)
+- **Next task:** 1.5c (destroy the hand build and rebuild from code)
 
 ## Open items
 
@@ -62,7 +62,7 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
   - Verify: `checkov` passes; line-by-line review against the §4 table
 - [x] **1.5a** Hand-build the network, security groups and flow logs in the console, without reading the modules · M
   - Verify: `aws ec2 describe-subnets` shows the 5 CIDRs from §2; `aws ec2 describe-flow-logs` shows `ACTIVE`
-- [ ] **1.5b** `terraform/lab` root stack, network only: import the hand build, compare · M+C
+- [x] **1.5b** State bucket by hand, `aws login`, `terraform/lab` root stack (network only, written by Marko), import the hand build, compare · M+C
   - Verify: `terraform plan` reports no changes
 - [ ] **1.5c** Destroy the hand build and rebuild from code · M
   - Verify: the 1.5a checks pass again

@@ -165,6 +165,8 @@ Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 U
 - One IAM role per instance: all → `AmazonSSMManagedInstanceCore`; app → read `/mailbridge/*` + pull from the Mailbridge ECR repository only; proxy → `route53:ListHostedZones`, `route53:GetChange`, and `route53:ChangeResourceRecordSets` on this zone limited to the `_acme-challenge` name; db → `s3:PutObject` on backup prefix only
 - No stored AWS keys on any instance: roles provide temporary credentials through IMDSv2
 - CloudTrail (management events) → S3 · GuardDuty free trial during testing
+- Terraform runs from the laptop with temporary `aws login` credentials; no access keys exist
+- Terraform state: versioned, encrypted S3 bucket with native locking (`use_lockfile`), hand-built then imported into `persistent`
 
 ---
 

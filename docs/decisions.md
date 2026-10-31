@@ -19,3 +19,5 @@ Format: date · decision · why
 - 2026-10-31 · Each layer is built by hand first, then compared with code, then rebuilt from code · hands-on understanding plus a proven, repeatable deployment
 - 2026-10-31 · VPC flow logs go to an S3 bucket in persistent · evidence covers traffic that never crosses fw-ips and survives lab teardown, at lower cost than CloudWatch
 - 2026-10-31 · NACLs allow ephemeral return ports and deny app and db service ports just before that rule · stateless return rules would otherwise reopen ports 3000, 5432 and 1514-1515 to every subnet
+- 2026-10-31 · Laptop Terraform authenticates with `aws login` · temporary credentials, with no long-lived access key on disk
+- 2026-10-31 · Terraform state lives in a versioned S3 bucket with native locking; the bucket name stays out of the repo · state survives laptop loss, old versions can be recovered, and the account ID stays private

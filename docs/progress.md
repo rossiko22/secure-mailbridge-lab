@@ -18,4 +18,8 @@ Update at the end of every session: what was done, what's verified, next step.
 - Done: five Tier 1 security groups built by hand, rules checked against §4; default group emptied; sg-fw attached to the fw-ips ENI.
 - Done: NACL rules designed and documented (decision 13).
 - Done: five NACLs built by hand and associated with their subnets; 1.5a finished; NACLs added to modules/security, 50 rules matched against the live output.
-- Next: compare the hand-built network with code (1.5b). NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.
+- Decided: `aws login` for laptop credentials, S3 for Terraform state (decisions 14, 15).
+- Done: state bucket built by hand and checked; `aws login` working as marko-admin; terraform/lab root stack written (local validate only, nothing planned or applied).
+- Done: 114 hand-built resources imported into Terraform; the only drift was two missing `Name` tags; final `terraform plan` reports no changes (1.5b). Fixed NACL `for_each` to use static keys.
+- Verified: `terraform plan -destroy` shows 114 to destroy and nothing else; the destroy itself has not been run.
+- Next: 1.5c: run `aws login` if needed, `terraform destroy`, `terraform apply`, then re-run the 1.5a checks. Use `-no-color` when grepping Terraform output. NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.

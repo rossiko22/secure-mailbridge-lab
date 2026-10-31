@@ -197,3 +197,31 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** Three extra rules to maintain, and any new service in that port range needs its own deny. NACLs stay coarse: they work on subnets, so they cannot express per-host rules the way security groups can. Traffic to the Amazon DNS resolver and metadata service is not filtered by NACLs.
 
 **Verify once built.** With the `db` security group temporarily opened to the DMZ, `nc -zv 10.0.4.10 5432` from `proxy` still times out and flow logs show `REJECT`. Restore the group afterwards.
+
+---
+
+## 14. Laptop credentials with aws login (2026-10-31)
+
+**Problem.** Terraform on the laptop needs AWS credentials, and no access keys exist by design.
+
+**Options.** A: `aws login`. B: run Terraform in CloudShell. C: create access keys.
+
+**Chosen: A.** `aws login` signs in through the browser with the existing console identity and MFA, then gives the CLI short-lived credentials. This is the same principle as decision 1: a credential that expires limits the damage if it leaks, and an access key does not. If a tool cannot read these credentials directly, `aws configure export-credentials --format env` passes them through as environment variables.
+
+**Trade-off accepted.** Sessions expire, so long work needs signing in again, and it depends on a recent AWS CLI. It also still uses `AdministratorAccess`, so a session on the laptop is powerful while it lasts.
+
+**Verify once built.** After `aws login`, `aws sts get-caller-identity` shows `marko-admin` or its login session. `~/.aws/credentials` contains no access key.
+
+---
+
+## 15. Terraform state in S3 (2026-10-31)
+
+**Problem.** State maps code to real resources and can contain sensitive values. Losing it means Terraform no longer knows what it manages, and each rebuild in this project depends on it.
+
+**Options.** A: an S3 bucket built by hand now. B: local state, migrated later.
+
+**Chosen: A.** S3 keeps state off the laptop. Versioning allows recovery from a bad write, encryption protects it at rest, and blocking public access keeps it private. S3 native locking (`use_lockfile`) stops two runs writing at once, without a DynamoDB table. The bucket is hand-built and later imported into `terraform/persistent`, since a stack cannot create the bucket holding its own state. The backend block stays partial, with the bucket name in a gitignored `backend.hcl`, because the name contains the account ID and the repo is public.
+
+**Trade-off accepted.** A small storage cost, a bootstrap step that cannot be fully automated, and a manual `-backend-config=backend.hcl` on init.
+
+**Verify once built.** `aws s3api get-bucket-versioning` shows `Enabled`. After `terraform apply`, `aws s3 ls` shows the state object. `git check-ignore backend.hcl` prints the name.
