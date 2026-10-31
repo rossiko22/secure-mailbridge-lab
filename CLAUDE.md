@@ -34,7 +34,11 @@ PostgreSQL · Wazuh · Docker · eu-central-1
 ## Repo conventions
 - Branch per change, Conventional Commits (`feat:`, `fix:`, `docs:`, `chore:`), merge only on green CI.
 - `docs/progress.md`: update at the end of every session — what was done, what's verified, next step.
-- `docs/decisions.md`: one line per decision (date · decision · why). No long ADRs.
+- Every design decision gets documented, same format every time:
+  - `docs/decisions.md`: one line (date · decision · why).
+  - `docs/rationale.md`: a short section (about half a page) with the problem, the options considered, what we chose and why, the trade-off we accepted, and how to verify it once built.
+  - When a decision changes the design, update `docs/ARCHITECTURE.md` and `docs/TASKS.md` in the same commit.
+  - Present options to me as A/B/C with your recommendation first, and explain the underlying concept so I can defend the choice in an interview.
 - CI must pass: `terraform fmt -check`, `terraform validate`, `tflint`, `checkov` (IaC security scan), `ansible-lint`, `gitleaks` (secret scan).
 - Pre-commit runs `gitleaks` and `terraform fmt` locally.
 

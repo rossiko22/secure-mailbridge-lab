@@ -10,14 +10,13 @@ it is verified, and the relevant doc section is updated.
 
 ## Current position
 
-- **Phase:** 0, repo foundation
-- **Next task:** 0.5
+- **Phase:** 1, Tier 1 on AWS (0.5–0.7 still open; 0.5 deferred)
+- **Next task:** 1.3
 
-## Open questions
+## Open items
 
-- [ ] **Q1 Mailbridge source:** where do the app code and image live? Blocks 1.14.
-- [ ] **Q2 Domain:** which domain and DNS provider? ARCHITECTURE.md §6 leans towards Cloudflare DNS with `certbot-dns-cloudflare`. Must be settled before 1.13, and DNS belongs in `terraform/persistent`, so ideally before 1.2.
-- [ ] **Q3 Persistent contents:** the repo layout does not place the Elastic IP or the Budget. Proposed: both in `persistent`. A lab-owned Elastic IP would change on every rebuild and break issued `.ovpn` profiles.
+- [ ] **Buy the domain** and set its NS records to the Route 53 zone. Needed for 1.2.
+- [ ] **Mailbridge repo location:** where the source lives, so the image can be built and pushed to ECR. Needed for 1.14.
 
 ---
 
@@ -25,14 +24,14 @@ it is verified, and the relevant doc section is updated.
 
 - [x] **0.1** Folder structure, git repo, `.gitignore`, doc stubs · C
   - Verify: `git check-ignore x.tfstate x.ovpn x.key .env` prints all four names
-- [ ] **0.2** Answer Q1–Q3 · M
-  - Verify: no open box left in the list above
-- [ ] **0.3** Confirm the moved permissions are active · M
+- [x] **0.2** Decide Mailbridge image, DNS, Elastic IP, build order, NAT timing, repo visibility · M
+  - Verify: all six are in `decisions.md` and `rationale.md`
+- [x] **0.3** Confirm the moved permissions are active · M
   - Verify: restart Claude Code, run `/permissions`; `terraform apply` appears under deny
 - [x] **0.4** Pre-commit: `gitleaks`, `terraform fmt` · C
   - Verify: `pre-commit run --all-files` passes; a fake AWS key in a test commit is blocked
-- [ ] **0.5** CI workflow: `terraform fmt -check`, `terraform validate`, `tflint`, `checkov`, `ansible-lint`, `gitleaks` · C
-  - Verify: the first PR shows all six checks green
+- [ ] **0.5** CI workflow: `terraform fmt -check`, `terraform validate`, `tflint`, `checkov`, `ansible-lint`, `gitleaks`, then branch protection on `main` · C
+  - Verify: the first PR shows all six checks green; a PR with a failing job cannot be merged
 - [ ] **0.6** Makefile skeleton (`up`, `down`, `verify`) · C
   - Verify: `make -n up` prints the steps without executing them
 - [ ] **0.7** First draft of `threat-model.md` · M
@@ -40,14 +39,14 @@ it is verified, and the relevant doc section is updated.
 
 ## Phase 1: Tier 1 on AWS
 
-Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN first) → proxy → app → db → siem.
+Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → db → app → proxy → siem.
 
 **Every `terraform apply`, `destroy` or AWS resource creation needs Marko's explicit go-ahead.**
 
 **Foundation**
-- [ ] **1.1** AWS Budget alert at $20 (day one, §12) · M+C
+- [ ] **1.1** AWS Budget alert at $20, in `terraform/persistent` (day one, §12) · M+C
   - Verify: budget visible in the console; test notification received
-- [ ] **1.2** `terraform/persistent`: state bucket, backup bucket, DNS, VPN CA + secrets · C
+- [ ] **1.2** `terraform/persistent`: state bucket, backup bucket, Route 53 zone, ECR repository, VPN CA + secrets · C
   - Verify: Marko reviews `terraform plan` before any apply; no secret values in the repo or in plan output
 
 **Network (free resources)**
@@ -60,15 +59,17 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN first) → proxy
   - Verify: Marko approves the plan; `aws ec2 describe-subnets` shows the 5 CIDRs from §2
 
 **fw-ips**
-- [ ] **1.6** `modules/compute` and IAM: fw-ips instance, IMDSv2, encrypted gp3, `credit_specification = "standard"`, source/dest check off · C
-  - Verify: `tflint` and `checkov` pass; plan shows `http_tokens = "required"`; `aws ssm start-session` connects
+- [ ] **1.6** `modules/compute` and IAM: fw-ips instance, IMDSv2, encrypted gp3, `credit_specification = "standard"`, source/dest check off, Elastic IP and `vpn.<domain>` record · C
+  - Verify: `tflint` and `checkov` pass; plan shows `http_tokens = "required"`; `aws ssm start-session` connects; `dig vpn.<domain> +short` matches the Elastic IP
 - [ ] **1.7** `fw-ips` role: easy-rsa PKI, one cert per device, CRL · C
   - Verify: `openssl crl -in crl.pem -noout -text` lists a test-revoked serial
-- [ ] **1.8** `fw-ips` role: OpenVPN server, §5 hardening, `client-config-dir` pools · C
+- [ ] **1.8** `fw-ips` role: OpenVPN server, §5 hardening, `client-config-dir` pools, profiles using `vpn.<domain>` · C
   - Verify: user cert gets 10.8.0.x, admin cert gets 10.8.1.x
-- [ ] **1.9** Core nftables ruleset including NAT for private subnets (§4) · **M**
+- [ ] **1.9a** nftables: forwarding and NAT for private subnets · **M**
   - Note: private hosts reach SSM through fw-ips, so this comes before any of them is configured
-  - Verify: `nft list ruleset`; user pool reaches only 10.0.2.10:443, other traffic is dropped and logged
+  - Verify: `aws ssm describe-instance-information` lists a private test host as `Online`
+- [ ] **1.9b** Core nftables ruleset: full §4 policy on top of 1.9a · **M**
+  - Verify: `nft list ruleset`; user pool reaches only 10.0.2.10:443, other traffic is dropped and logged; SSM still `Online`
 - [ ] **1.10** `fw-ips` role: Unbound with the private `mail.<domain>` record · C
   - Verify: `dig @10.0.1.10 mail.<domain> +short` from the VPN returns 10.0.2.10
 - [ ] **1.11** `fw-ips` role: Suricata install, NFQUEUE wiring, `eve.json` · C
@@ -76,13 +77,13 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN first) → proxy
 - [ ] **1.12** Custom Suricata rules and test pcaps · **M**
   - Verify: `suricata -r <pcap> -S <rules>` raises the expected alert; live traffic is dropped inline
 
-**proxy, app, db**
-- [ ] **1.13** `proxy` role: Nginx, TLS, rate limit, ModSecurity v3 + CRS, Certbot DNS-01 (staging) · C
-  - Verify: `curl -k https://mail.<domain>` over VPN gets 502 until the app exists; `?id=1' OR '1'='1` gets 403 and is in the audit log
-- [ ] **1.14** `app` role: Mailbridge in Docker, listening on 3000, secrets from SSM · C
-  - Verify: container runs; port 3000 reachable from proxy, unreachable from the VPN directly
-- [ ] **1.15** `db` role: PostgreSQL, app user, access from the app host only · C
-  - Verify: connect succeeds from app, is refused from proxy; `curl -k https://mail.<domain>` returns 200
+**db, app, proxy**
+- [ ] **1.13** `db` role: PostgreSQL, app user, access from the app host only · C
+  - Verify: connect succeeds from app, is refused from proxy
+- [ ] **1.14** `app` role: Mailbridge from ECR pinned by digest, listening on 3000, secrets from SSM · C
+  - Verify: `docker inspect` shows the pinned digest; port 3000 reachable from proxy, unreachable from the VPN directly
+- [ ] **1.15** `proxy` role: Nginx, TLS, rate limit, ModSecurity v3 + CRS, `certbot-dns-route53` (staging) · C
+  - Verify: `curl -k https://mail.<domain>` over VPN returns 200; `?id=1' OR '1'='1` gets 403 and is in the audit log
 
 **siem**
 - [ ] **1.16** `siem` role: Wazuh manager, indexer, dashboard · C

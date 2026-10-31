@@ -77,6 +77,10 @@ Deploy: Terraform (infra) + Ansible (config) · Teardown: `terraform destroy` wh
 
 All instances: IMDSv2 required · SSM agent (admin access, no SSH from internet) · unattended security updates · Wazuh agent · node_exporter.
 
+- fw-ips: its Elastic IP belongs to the `lab` stack and exists only during a session. Clients connect to `vpn.<domain>` (TTL 60), which `lab` updates on each apply.
+- app: pulls the Mailbridge image from ECR with its instance role, pinned by digest (`image@sha256:...`).
+- proxy: Certbot authenticates to Route 53 with its instance role; no stored DNS credentials.
+
 ---
 
 ## 4. Security groups (stateful, least privilege)
@@ -111,6 +115,7 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 - Per-client config (`client-config-dir`): user certs → 10.8.0.0/24, admin cert → 10.8.1.0/24
 - Hardening: `tls-crypt`, `data-ciphers AES-256-GCM`, `tls-version-min 1.3`, `crl-verify`, `user nobody`
 - Pushed: route to 10.0.2.0/24 (users) or + 10.0.5.0/24 (admins), DNS 10.0.1.10
+- Client profiles use `remote vpn.<domain> 1194 udp`, so they survive rebuilds
 - Client: `sudo openvpn --config marko-laptop.ovpn` → `https://mail.<domain>`
 
 ---
@@ -118,9 +123,10 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 ## 6. DNS & TLS
 
 - Unbound on fw-ips (10.0.1.10): private record `mail.<domain> → 10.0.2.10`, forwards everything else to AmazonProvidedDNS (10.0.0.2). The name resolves only inside the VPN.
-- Certbot (with the DNS provider plugin) obtains a Let's Encrypt cert via **DNS-01 challenge** — no public exposure needed. Nginx serves it; renewal via systemd timer.
+- Certbot (`certbot-dns-route53`) obtains a Let's Encrypt cert via **DNS-01 challenge** using the proxy instance role — no public exposure and no stored API token. Nginx serves it; renewal via systemd timer.
 - **Staging certificates while building and rebuilding; switch to production certs once the setup is stable** (avoids Let's Encrypt rate limits).
-- Domain and DNS provider: **to be decided before the proxy role** (likely a cheap domain on Cloudflare DNS + `certbot-dns-cloudflare`).
+- DNS provider: **Route 53** public hosted zone in the `persistent` stack. The domain can be registered anywhere and is delegated by setting its NS records to the zone's name servers. Domain name: to be bought before task 1.2.
+- Public records: `_acme-challenge.mail.<domain>` (TXT, Certbot) and `vpn.<domain>` (A, TTL 60, written by `lab`). `mail.<domain>` is never public.
 - OAuth redirect `https://mail.<domain>/oauth/callback` works because the redirect happens in the browser, which is inside the tunnel.
 - Google/Microsoft OAuth apps stay in **testing mode, test accounts only**.
 
@@ -130,7 +136,8 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 
 - SSM Parameter Store (SecureString): OAuth client secrets, DB password, token encryption key (`/mailbridge/*`)
 - Mailbox OAuth tokens encrypted in the DB by the app (key from Parameter Store)
-- One IAM role per instance: all → `AmazonSSMManagedInstanceCore`; app → read `/mailbridge/*`; db → `s3:PutObject` on backup prefix only
+- One IAM role per instance: all → `AmazonSSMManagedInstanceCore`; app → read `/mailbridge/*` + pull from the Mailbridge ECR repository only; proxy → `route53:ListHostedZones`, `route53:GetChange`, and `route53:ChangeResourceRecordSets` on this zone limited to the `_acme-challenge` name; db → `s3:PutObject` on backup prefix only
+- No stored AWS keys on any instance: roles provide temporary credentials through IMDSv2
 - CloudTrail (management events) → S3 · GuardDuty free trial during testing
 
 ---
@@ -184,7 +191,7 @@ For each: attack → detection (or miss) → custom rule/fix → re-test.
 
 Everything runs on AWS. There is no VPS phase, and no VPS is used anywhere in this project.
 
-1. Tier 1 on AWS: network (VPC, subnets, IGW, routes, SGs — free) → fw-ips (OpenVPN first) → proxy → app → db → siem
+1. Tier 1 on AWS: network (VPC, subnets, IGW, routes, SGs — free) → fw-ips (OpenVPN, then NAT, because private hosts reach SSM through it) → db → app → proxy → siem. Built bottom-up, so each host is tested against its real dependency.
 2. Tier 1 attack scenarios → findings report
 3. Tier 2: monitoring, CI, backups + restore test
 4. Tier 3: k3s for app tier, vuln scanning (Nuclei/Greenbone), ISO 27001/NIS2 controls map
@@ -199,11 +206,11 @@ Everything runs on AWS. There is no VPS phase, and no VPS is used anywhere in th
 secure-mailbridge-lab/
   terraform/
     modules/      network/ security/ compute/   (shared)
-    persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, state bucket, DNS
-    lab/          destroyed after every session: VPC, subnets, SGs, VMs (uses modules/)
+    persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, state bucket, Route 53 zone, ECR repository, Budget
+    lab/          destroyed after every session: VPC, subnets, SGs, VMs, Elastic IP, vpn.<domain> record (uses modules/)
   ansible/        roles: fw-ips/ proxy/ app/ db/ siem/ mon/
   suricata-rules/ custom rules + test pcaps
-  docs/           ARCHITECTURE.md · threat-model.md · findings-report.md · iso27001-map.md
+  docs/           ARCHITECTURE.md · TASKS.md · decisions.md · rationale.md · progress.md · threat-model.md · findings-report.md · iso27001-map.md
   .github/workflows/
   README.md       one-command deploy + teardown
 ```
