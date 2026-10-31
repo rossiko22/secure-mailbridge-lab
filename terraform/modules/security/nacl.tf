@@ -112,6 +112,7 @@ locals {
 }
 
 resource "aws_network_acl" "this" {
+  #checkov:skip=CKV2_AWS_1:Attached through subnet_ids, which checkov cannot trace across modules.
   # Keys come from subnet_cidrs because they are known before apply; subnet IDs are not.
   for_each = var.subnet_cidrs
 

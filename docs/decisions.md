@@ -22,3 +22,5 @@ Format: date · decision · why
 - 2026-10-31 · Laptop Terraform authenticates with `aws login` · temporary credentials, with no long-lived access key on disk
 - 2026-10-31 · Terraform state lives in a versioned S3 bucket with native locking; the bucket name stays out of the repo · state survives laptop loss, old versions can be recovered, and the account ID stays private
 - 2026-10-31 · Rebuild test 1.5c deferred; the hand-built network stays up between sessions · Marko chose to keep the hand build, and the network is free while idle; paid resources are still removed after each session
+- 2026-10-31 · CI pins actions by commit and tools by version, with documented checkov skips for two false positives · a moved tag cannot change what runs, and each skip states its reason
+- 2026-10-31 · Ansible role is named fw_ips while the host stays fw-ips · role names cannot contain hyphens, and ansible-lint enforces this

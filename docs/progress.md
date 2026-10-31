@@ -23,4 +23,5 @@ Update at the end of every session: what was done, what's verified, next step.
 - Done: 114 hand-built resources imported into Terraform; the only drift was two missing `Name` tags; final `terraform plan` reports no changes (1.5b). Fixed NACL `for_each` to use static keys.
 - Verified: `terraform plan -destroy` shows 114 to destroy and nothing else; the destroy itself has not been run.
 - Decided: keep the hand-built network; rebuild test deferred to 1.20 (decision 16).
+- Done: six CI checks added on chore/ci with actions pinned by commit; documented checkov skips (decision 17).
 - Next: fw-ips (task 1.6). Use `-no-color` when grepping Terraform output. NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.

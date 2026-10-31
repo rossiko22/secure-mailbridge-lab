@@ -241,7 +241,7 @@ secure-mailbridge-lab/
     modules/      network/ security/ compute/   (shared)
     persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, flow log bucket, state bucket, Route 53 zone, ECR repository, Budget
     lab/          VPC, subnets, SGs (free, kept between sessions) · VMs, Elastic IP, vpn.<domain> record (removed after every session) (uses modules/)
-  ansible/        roles: fw-ips/ proxy/ app/ db/ siem/ mon/
+  ansible/        roles: fw_ips/ proxy/ app/ db/ siem/ mon/   (Ansible role names cannot contain hyphens; the host stays fw-ips)
   suricata-rules/ custom rules + test pcaps
   docs/           ARCHITECTURE.md · TASKS.md · decisions.md · rationale.md · progress.md · threat-model.md · findings-report.md · iso27001-map.md
   .github/workflows/

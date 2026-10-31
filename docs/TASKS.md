@@ -12,7 +12,7 @@ it is verified, and the relevant doc section is updated.
 
 ## Current position
 
-- **Phase:** 1, Tier 1 on AWS (0.5–0.7 still open; 0.5 deferred)
+- **Phase:** 1, Tier 1 on AWS (0.6 and 0.7 still open)
 - **Next task:** 1.6 (fw-ips), after agreeing the approach
 
 ## Open items
@@ -58,7 +58,6 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
   - Note: private routes show as `blackhole` until fw-ips attaches; the S3 endpoint moved to T2.3
   - Verify: plan shows no NAT Gateway, ALB or interface endpoint
 - [~] **1.4** `modules/security`: security groups and NACLs from §4 · C
-  - Open: checkov `CKV2_AWS_5` until compute attaches the groups; `CKV2_AWS_1` cannot see subnets passed in from another module
   - Verify: `checkov` passes; line-by-line review against the §4 table
 - [x] **1.5a** Hand-build the network, security groups and flow logs in the console, without reading the modules · M
   - Verify: `aws ec2 describe-subnets` shows the 5 CIDRs from §2; `aws ec2 describe-flow-logs` shows `ACTIVE`
@@ -68,20 +67,20 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
   - Verify: the 1.5a checks pass again; `terraform plan` reports no changes
 
 **fw-ips**
-- [ ] **1.6** `modules/compute` and IAM: fw-ips instance, IMDSv2, encrypted gp3, `credit_specification = "standard"`, source/dest check off, Elastic IP and `vpn.<domain>` record · C
+- [ ] **1.6** Remove the `CKV2_AWS_5` skips as groups get attached. `modules/compute` and IAM: fw-ips instance, IMDSv2, encrypted gp3, `credit_specification = "standard"`, source/dest check off, Elastic IP and `vpn.<domain>` record · C
   - Verify: `tflint` and `checkov` pass; plan shows `http_tokens = "required"`; `aws ssm start-session` connects; `dig vpn.<domain> +short` matches the Elastic IP
-- [ ] **1.7** `fw-ips` role: easy-rsa PKI, one cert per device, CRL · C
+- [ ] **1.7** `fw_ips` role: easy-rsa PKI, one cert per device, CRL · C
   - Verify: `openssl crl -in crl.pem -noout -text` lists a test-revoked serial
-- [ ] **1.8** `fw-ips` role: OpenVPN server, §5 hardening, `client-config-dir` pools, profiles using `vpn.<domain>` · C
+- [ ] **1.8** `fw_ips` role: OpenVPN server, §5 hardening, `client-config-dir` pools, profiles using `vpn.<domain>` · C
   - Verify: user cert gets 10.8.0.x, admin cert gets 10.8.1.x
 - [ ] **1.9a** nftables: forwarding and NAT for private subnets · **M**
   - Note: private hosts reach SSM through fw-ips, so this comes before any of them is configured
   - Verify: `aws ssm describe-instance-information` lists a private test host as `Online`
 - [ ] **1.9b** Core nftables ruleset: full §4 policy on top of 1.9a · **M**
   - Verify: `nft list ruleset`; user pool reaches only 10.0.2.10:443, other traffic is dropped and logged; SSM still `Online`
-- [ ] **1.10** `fw-ips` role: Unbound with the private `mail.<domain>` record · C
+- [ ] **1.10** `fw_ips` role: Unbound with the private `mail.<domain>` record · C
   - Verify: `dig @10.0.1.10 mail.<domain> +short` from the VPN returns 10.0.2.10
-- [ ] **1.11** `fw-ips` role: Suricata install, NFQUEUE wiring, `eve.json` · C
+- [ ] **1.11** `fw_ips` role: Suricata install, NFQUEUE wiring, `eve.json` · C
   - Verify: `suricata -T` passes; `sudo tail -f eve.json` shows flows while using the VPN
 - [ ] **1.12** Custom Suricata rules and test pcaps · **M**
   - Verify: `suricata -r <pcap> -S <rules>` raises the expected alert; live traffic is dropped inline

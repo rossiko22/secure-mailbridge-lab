@@ -239,3 +239,17 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** The code has proven that it describes the network, not that it can create it. Ordering problems stay hidden until the first full rebuild, which then involves more resources. `make up` cannot count as verified for this layer until that test has run.
 
 **Verify once built.** Run `terraform destroy` and `terraform apply` once before Tier 1 closes (task 1.20), then re-run the 1.5a checks. `terraform plan` reports no changes.
+
+---
+
+## 17. Pinned CI with documented checkov skips (2026-10-31)
+
+**Problem.** CI must enforce "merge only on green", but a workflow that follows moving tags can change without any commit here, and checkov flags two things that are not real problems.
+
+**Options.** A: pin actions by commit, and skip each false positive with a written reason. B: use version tags and turn the two checks off globally.
+
+**Chosen: A.** A Git tag such as `v7` can be moved, so a compromised action could reach every repo that follows it. This is a supply chain attack. A commit SHA identifies exact content, the same idea as digest pinning in decision 1. The token is read-only. Skips sit next to the resource they apply to and state why, so the check stays active for everything else. `CKV2_AWS_5` is skipped for security groups the compute module will attach, and those skips come out in task 1.6. `CKV2_AWS_1` is skipped because checkov cannot trace `subnet_ids` across modules.
+
+**Trade-off accepted.** Pinned versions need updating by hand, and a skip can go stale if nobody removes it.
+
+**Verify once built.** The pull request shows six green checks. `grep -rn 'checkov:skip' terraform` lists each skip with its reason.
