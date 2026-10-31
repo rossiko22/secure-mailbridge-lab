@@ -32,7 +32,7 @@ it is verified, and the relevant doc section is updated.
   - Verify: restart Claude Code, run `/permissions`; `terraform apply` appears under deny
 - [x] **0.4** Pre-commit: `gitleaks`, `terraform fmt` · C
   - Verify: `pre-commit run --all-files` passes; a fake AWS key in a test commit is blocked
-- [ ] **0.5** CI workflow: `terraform fmt -check`, `terraform validate`, `tflint`, `checkov`, `ansible-lint`, `gitleaks`, then branch protection on `main` · C
+- [x] **0.5** CI workflow: `terraform fmt -check`, `terraform validate`, `tflint`, `checkov`, `ansible-lint`, `gitleaks`, then branch protection on `main` · C
   - Verify: the first PR shows all six checks green; a PR with a failing job cannot be merged
 - [ ] **0.6** Makefile skeleton (`up`, `down`, `verify`) · C
   - Verify: `make -n up` prints the steps without executing them
