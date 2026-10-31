@@ -8,4 +8,8 @@ Update at the end of every session: what was done, what's verified, next step.
 - Done: pre-commit configured with gitleaks and terraform fmt (branch chore/pre-commit).
 - Done: six design decisions documented (decisions.md, rationale.md), ARCHITECTURE.md and TASKS.md updated, CLAUDE.md convention added, public GitHub repo created (nothing pushed yet).
 - Verified: permissions active (`terraform apply` under deny, confirmed by Marko).
-- Next: network module (task 1.3). CI (0.5) deferred; chore/pre-commit and docs/design-decisions wait for it.
+- Done: modules/network and modules/security (Tier 1 security groups) written on stacked feat/ branches; more decisions documented.
+- Verified locally only: `terraform fmt`, `terraform validate`, `tflint`, `checkov` run; nothing planned or applied. Open checkov failures are listed in TASKS.md 1.3 and 1.4.
+- Decided: hand build, compare, rebuild per layer (decision 11).
+- Done: Budget created by hand and verified (1.1b); flow logs added to modules/network (decision 12).
+- Next: confirm marko-admin MFA (1.1), then hand-build the network (1.5a). NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.

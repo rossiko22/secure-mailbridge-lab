@@ -55,11 +55,12 @@ Deploy: Terraform (infra) + Ansible (config) · Teardown: `terraform destroy` wh
 | public | 10.0.1.0/24 | → Internet Gateway | only fw-ips lives here |
 | dmz | 10.0.2.0/24 | → fw-ips ENI | no direct internet |
 | app | 10.0.3.0/24 | → fw-ips ENI | egress for Gmail/Graph APIs via fw |
-| data | 10.0.4.0/24 | → fw-ips ENI | + S3 **gateway endpoint** (free) for backups |
+| data | 10.0.4.0/24 | → fw-ips ENI | + S3 **gateway endpoint** (free) for backups, added in Tier 2 (T2.3) |
 | mgmt | 10.0.5.0/24 | → fw-ips ENI | admin-only |
 
 - **VPN pools are routed, not NATed:** VPC route `10.8.0.0/16 → fw-ips ENI`. Nginx, Wazuh and Suricata see the real VPN client IP, so every event is attributable to a device certificate.
-- fw-ips: **source/destination check disabled**.
+- fw-ips: **source/destination check disabled**. Its ENI is a standalone resource, so routes can target it before the instance exists.
+- Tier 1 uses one private route table for dmz, app, data and mgmt. `data` gets its own table when the S3 endpoint is added.
 - No NAT Gateway, no ALB, no interface endpoints (all bill hourly).
 
 ---
@@ -147,6 +148,9 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 **Security (Wazuh — "is something malicious happening?")**
 - Suricata `eve.json`, nftables drops, Nginx access/error logs + ModSecurity audit log, auth logs, OpenVPN connect/disconnect, file integrity monitoring
 
+**Network evidence (VPC flow logs)**
+- All traffic metadata → S3 bucket in `persistent`, 30-day lifecycle. Used for investigation, including traffic that never crosses fw-ips. Not fed to Wazuh in Tier 1.
+
 **Health (Prometheus/Grafana — "is everything healthy?")** — Tier 2
 - node_exporter on all VMs, postgres_exporter on db, blackbox_exporter probing `https://mail.<domain>`
 - Alertmanager → email/Discord: host down, disk > 80%, cert expiry < 14 days, probe failing
@@ -196,6 +200,8 @@ Everything runs on AWS. There is no VPS phase, and no VPS is used anywhere in th
 3. Tier 2: monitoring, CI, backups + restore test
 4. Tier 3: k3s for app tier, vuln scanning (Nuclei/Greenbone), ISO 27001/NIS2 controls map
 
+**Method for each layer:** build by hand → test → compare with code (`terraform import` + `plan`, or `ansible-playbook --check --diff`) → destroy and rebuild from code → re-test. The final state is always Terraform + Ansible.
+
 **Do not start a tier until the previous tier's write-up is done.**
 
 ---
@@ -206,7 +212,7 @@ Everything runs on AWS. There is no VPS phase, and no VPS is used anywhere in th
 secure-mailbridge-lab/
   terraform/
     modules/      network/ security/ compute/   (shared)
-    persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, state bucket, Route 53 zone, ECR repository, Budget
+    persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, flow log bucket, state bucket, Route 53 zone, ECR repository, Budget
     lab/          destroyed after every session: VPC, subnets, SGs, VMs, Elastic IP, vpn.<domain> record (uses modules/)
   ansible/        roles: fw-ips/ proxy/ app/ db/ siem/ mon/
   suricata-rules/ custom rules + test pcaps

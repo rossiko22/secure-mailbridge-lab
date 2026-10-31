@@ -5,13 +5,15 @@ Single tracker for the whole lab. Session notes go in `progress.md`, decisions i
 **Status:** `[ ]` todo · `[~]` in progress · `[x]` done and verified
 **Owner:** **M** = Marko writes it, Claude reviews · **C** = Claude drafts after an OK on the approach · **M+C** = shared
 
+**Layer loop (network, fw-ips, db, app, proxy, siem):** build by hand → test → compare with code → destroy and rebuild from code → re-test. A layer is finished only after the rebuild passes. Remove paid hand-built resources at the end of each session.
+
 A task is done only when its verify step passes. A phase is done only when `make up` deploys it,
 it is verified, and the relevant doc section is updated.
 
 ## Current position
 
 - **Phase:** 1, Tier 1 on AWS (0.5–0.7 still open; 0.5 deferred)
-- **Next task:** 1.3
+- **Next task:** 1.5a (hand-build the network), after the last check on 1.1
 
 ## Open items
 
@@ -44,19 +46,25 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 **Every `terraform apply`, `destroy` or AWS resource creation needs Marko's explicit go-ahead.**
 
 **Foundation**
-- [ ] **1.1** AWS Budget alert at $20, in `terraform/persistent` (day one, §12) · M+C
-  - Verify: budget visible in the console; test notification received
-- [ ] **1.2** `terraform/persistent`: state bucket, backup bucket, Route 53 zone, ECR repository, VPN CA + secrets · C
+- [~] **1.1** Account safety: root MFA, admin IAM user with MFA, no root access keys · M
+  - Verify: IAM Dashboard shows root MFA enabled; console sign-in as the admin user works
+- [x] **1.1b** AWS Budget alert at $20, by hand now, imported into `terraform/persistent` with 1.2 (day one, §12) · M
+  - Verify: in CloudShell, `aws budgets describe-budget --account-id <id> --budget-name mailbridge-lab-monthly` shows a 20 USD limit and `FilterExpression` excludes `Credit` and `Refund`
+- [ ] **1.2** `terraform/persistent`: state bucket, backup bucket, flow log bucket, Route 53 zone, ECR repository, VPN CA + secrets · C
   - Verify: Marko reviews `terraform plan` before any apply; no secret values in the repo or in plan output
 
 **Network (free resources)**
-- [ ] **1.3** `modules/network`: VPC, 5 subnets, routes, IGW, S3 gateway endpoint · C
-  - Note: private routes point at the fw-ips ENI, so the ENI must exist before the instance does
+- [~] **1.3** `modules/network`: VPC, 5 subnets, routes, IGW, standalone fw-ips ENI, flow logs · C
+  - Note: private routes show as `blackhole` until fw-ips attaches; the S3 endpoint moved to T2.3
   - Verify: plan shows no NAT Gateway, ALB or interface endpoint
 - [ ] **1.4** `modules/security`: security groups and NACLs from §4 · C
   - Verify: `checkov` passes; line-by-line review against the §4 table
-- [ ] **1.5** `terraform/lab` root stack, network only: reviewed plan, first apply · M+C
-  - Verify: Marko approves the plan; `aws ec2 describe-subnets` shows the 5 CIDRs from §2
+- [ ] **1.5a** Hand-build the network, security groups and flow logs in the console, without reading the modules · M
+  - Verify: `aws ec2 describe-subnets` shows the 5 CIDRs from §2; `aws ec2 describe-flow-logs` shows `ACTIVE`
+- [ ] **1.5b** `terraform/lab` root stack, network only: import the hand build, compare · M+C
+  - Verify: `terraform plan` reports no changes
+- [ ] **1.5c** Destroy the hand build and rebuild from code · M
+  - Verify: the 1.5a checks pass again
 
 **fw-ips**
 - [ ] **1.6** `modules/compute` and IAM: fw-ips instance, IMDSv2, encrypted gp3, `credit_specification = "standard"`, source/dest check off, Elastic IP and `vpn.<domain>` record · C
@@ -120,7 +128,7 @@ Targets: own deployment only, never Google/Microsoft APIs. Each one follows atta
 
 - [ ] **T2.1** `mon` host: Prometheus, Grafana, Alertmanager, exporters
 - [ ] **T2.2** App CI (§10): Jest, Playwright, k6, Trivy, SonarCloud, ZAP baseline
-- [ ] **T2.3** Nightly `pg_dump` to S3, plus a tested and documented restore
+- [ ] **T2.3** S3 gateway endpoint with a separate `data` route table; nightly `pg_dump` to S3, plus a tested and documented restore
 
 ## Tier 3 (gated)
 
