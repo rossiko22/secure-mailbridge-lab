@@ -33,3 +33,9 @@ ta.key
 .DS_Store
 .vscode/
 .idea/
+
+# Terraform backend settings (bucket name contains the account ID)
+backend.hcl
+
+# Temporary import blocks with live resource IDs
+terraform/lab/imports.tf

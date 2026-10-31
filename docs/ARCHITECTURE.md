@@ -55,11 +55,12 @@ Deploy: Terraform (infra) + Ansible (config) · Teardown: `terraform destroy` wh
 | public | 10.0.1.0/24 | → Internet Gateway | only fw-ips lives here |
 | dmz | 10.0.2.0/24 | → fw-ips ENI | no direct internet |
 | app | 10.0.3.0/24 | → fw-ips ENI | egress for Gmail/Graph APIs via fw |
-| data | 10.0.4.0/24 | → fw-ips ENI | + S3 **gateway endpoint** (free) for backups |
+| data | 10.0.4.0/24 | → fw-ips ENI | + S3 **gateway endpoint** (free) for backups, added in Tier 2 (T2.3) |
 | mgmt | 10.0.5.0/24 | → fw-ips ENI | admin-only |
 
 - **VPN pools are routed, not NATed:** VPC route `10.8.0.0/16 → fw-ips ENI`. Nginx, Wazuh and Suricata see the real VPN client IP, so every event is attributable to a device certificate.
-- fw-ips: **source/destination check disabled**.
+- fw-ips: **source/destination check disabled**. Its ENI is a standalone resource, so routes can target it before the instance exists.
+- Tier 1 uses one private route table for dmz, app, data and mgmt. `data` gets its own table when the S3 endpoint is added.
 - No NAT Gateway, no ALB, no interface endpoints (all bill hourly).
 
 ---
@@ -76,6 +77,10 @@ Deploy: Terraform (infra) + Ansible (config) · Teardown: `terraform destroy` wh
 | mon | t3.small | 20 GB | Prometheus, Grafana, Alertmanager | 2 |
 
 All instances: IMDSv2 required · SSM agent (admin access, no SSH from internet) · unattended security updates · Wazuh agent · node_exporter.
+
+- fw-ips: its Elastic IP belongs to the `lab` stack and exists only during a session. Clients connect to `vpn.<domain>` (TTL 60), which `lab` updates on each apply.
+- app: pulls the Mailbridge image from ECR with its instance role, pinned by digest (`image@sha256:...`).
+- proxy: Certbot authenticates to Route 53 with its instance role; no stored DNS credentials.
 
 ---
 
@@ -94,7 +99,32 @@ All instances: IMDSv2 required · SSM agent (admin access, no SSH from internet)
 | sg-mon | TCP 3000 (Grafana) | 10.8.1.0/24 |
 | all | TCP 9100 (node_exporter), 9187 (postgres_exporter on db) | sg-mon |
 
+**Egress (explicit, stateful replies need no rule):**
+
+| SG | Outbound | To |
+|---|---|---|
+| sg-fw | all | 0.0.0.0/0 (forwarded traffic; nftables applies the policy) |
+| sg-proxy, sg-app, sg-db, sg-siem | TCP 443, UDP 123 | 0.0.0.0/0 (through fw-ips) |
+| | TCP/UDP 53 | 10.0.1.10/32 (Unbound) |
+| sg-proxy, sg-app, sg-db | TCP 1514, 1515 | sg-siem |
+| sg-proxy | TCP 3000 | sg-app |
+| sg-app | TCP 5432 | sg-db |
+
+The VPC default security group has no rules.
+
 Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nftables on fw-ips.
+
+**Network ACLs (stateless, one per subnet, first match wins, default deny).** `eph` is TCP/UDP 1024–65535.
+
+| Subnet | Inbound | Outbound |
+|---|---|---|
+| public | 100 UDP 1194 from 0.0.0.0/0 · 110 all from 10.0.0.0/16 · 120 TCP eph from 0.0.0.0/0 · 130 UDP eph from 0.0.0.0/0 | 100 all to 10.0.0.0/16 · 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 UDP eph to 0.0.0.0/0 |
+| dmz | 100 TCP 443 from 10.8.0.0/22 · 110 TCP eph from 0.0.0.0/0 · 120 UDP eph from 0.0.0.0/0 | 100 TCP 3000 to 10.0.3.0/24 · baseline · 150 agents · 160 TCP eph to 10.8.0.0/22 |
+| app | 100 TCP 3000 from 10.0.2.0/24 · 105 deny TCP 3000 from 0.0.0.0/0 · 110 TCP eph from 0.0.0.0/0 · 120 UDP eph from 0.0.0.0/0 | 100 TCP 5432 to 10.0.4.0/24 · baseline · 150 agents · 160 TCP eph to 10.0.2.0/24 |
+| data | 100 TCP 5432 from 10.0.3.0/24 · 105 deny TCP 5432 from 0.0.0.0/0 · 110 TCP eph from 0.0.0.0/0 · 120 UDP eph from 0.0.0.0/0 | baseline · 150 agents · 160 TCP eph to 10.0.3.0/24 |
+| mgmt | 100 TCP 1514–1515 from 10.0.0.0/16 · 105 deny TCP 1514–1515 from 0.0.0.0/0 · 110 TCP 443 from 10.8.1.0/24 · 120 TCP eph from 0.0.0.0/0 · 130 UDP eph from 0.0.0.0/0 | baseline · 160 TCP eph to 10.0.0.0/16 · 170 TCP eph to 10.8.1.0/24 |
+
+Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 UDP 53 and 140 TCP 53 to 10.0.1.10/32. Agents: TCP 1514–1515 to 10.0.5.0/24. A 443 test window also needs inbound TCP 443 and outbound TCP eph to 0.0.0.0/0 on public.
 
 **nftables on fw-ips (core rules):**
 - `tun0` user pool (10.8.0.0/24) → only `10.0.2.10:443`
@@ -111,6 +141,7 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 - Per-client config (`client-config-dir`): user certs → 10.8.0.0/24, admin cert → 10.8.1.0/24
 - Hardening: `tls-crypt`, `data-ciphers AES-256-GCM`, `tls-version-min 1.3`, `crl-verify`, `user nobody`
 - Pushed: route to 10.0.2.0/24 (users) or + 10.0.5.0/24 (admins), DNS 10.0.1.10
+- Client profiles use `remote vpn.<domain> 1194 udp`, so they survive rebuilds
 - Client: `sudo openvpn --config marko-laptop.ovpn` → `https://mail.<domain>`
 
 ---
@@ -118,9 +149,10 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 ## 6. DNS & TLS
 
 - Unbound on fw-ips (10.0.1.10): private record `mail.<domain> → 10.0.2.10`, forwards everything else to AmazonProvidedDNS (10.0.0.2). The name resolves only inside the VPN.
-- Certbot (with the DNS provider plugin) obtains a Let's Encrypt cert via **DNS-01 challenge** — no public exposure needed. Nginx serves it; renewal via systemd timer.
+- Certbot (`certbot-dns-route53`) obtains a Let's Encrypt cert via **DNS-01 challenge** using the proxy instance role — no public exposure and no stored API token. Nginx serves it; renewal via systemd timer.
 - **Staging certificates while building and rebuilding; switch to production certs once the setup is stable** (avoids Let's Encrypt rate limits).
-- Domain and DNS provider: **to be decided before the proxy role** (likely a cheap domain on Cloudflare DNS + `certbot-dns-cloudflare`).
+- DNS provider: **Route 53** public hosted zone in the `persistent` stack. The domain can be registered anywhere and is delegated by setting its NS records to the zone's name servers. Domain name: to be bought before task 1.2.
+- Public records: `_acme-challenge.mail.<domain>` (TXT, Certbot) and `vpn.<domain>` (A, TTL 60, written by `lab`). `mail.<domain>` is never public.
 - OAuth redirect `https://mail.<domain>/oauth/callback` works because the redirect happens in the browser, which is inside the tunnel.
 - Google/Microsoft OAuth apps stay in **testing mode, test accounts only**.
 
@@ -130,8 +162,11 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 
 - SSM Parameter Store (SecureString): OAuth client secrets, DB password, token encryption key (`/mailbridge/*`)
 - Mailbox OAuth tokens encrypted in the DB by the app (key from Parameter Store)
-- One IAM role per instance: all → `AmazonSSMManagedInstanceCore`; app → read `/mailbridge/*`; db → `s3:PutObject` on backup prefix only
+- One IAM role per instance: all → `AmazonSSMManagedInstanceCore`; app → read `/mailbridge/*` + pull from the Mailbridge ECR repository only; proxy → `route53:ListHostedZones`, `route53:GetChange`, and `route53:ChangeResourceRecordSets` on this zone limited to the `_acme-challenge` name; db → `s3:PutObject` on backup prefix only
+- No stored AWS keys on any instance: roles provide temporary credentials through IMDSv2
 - CloudTrail (management events) → S3 · GuardDuty free trial during testing
+- Terraform runs from the laptop with temporary `aws login` credentials; no access keys exist
+- Terraform state: versioned, encrypted S3 bucket with native locking (`use_lockfile`), hand-built then imported into `persistent`
 
 ---
 
@@ -139,6 +174,9 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 
 **Security (Wazuh — "is something malicious happening?")**
 - Suricata `eve.json`, nftables drops, Nginx access/error logs + ModSecurity audit log, auth logs, OpenVPN connect/disconnect, file integrity monitoring
+
+**Network evidence (VPC flow logs)**
+- All traffic metadata → S3 bucket in `persistent`, 30-day lifecycle. Used for investigation, including traffic that never crosses fw-ips. Not fed to Wazuh in Tier 1.
 
 **Health (Prometheus/Grafana — "is everything healthy?")** — Tier 2
 - node_exporter on all VMs, postgres_exporter on db, blackbox_exporter probing `https://mail.<domain>`
@@ -184,10 +222,12 @@ For each: attack → detection (or miss) → custom rule/fix → re-test.
 
 Everything runs on AWS. There is no VPS phase, and no VPS is used anywhere in this project.
 
-1. Tier 1 on AWS: network (VPC, subnets, IGW, routes, SGs — free) → fw-ips (OpenVPN first) → proxy → app → db → siem
+1. Tier 1 on AWS: network (VPC, subnets, IGW, routes, SGs — free) → fw-ips (OpenVPN, then NAT, because private hosts reach SSM through it) → db → app → proxy → siem. Built bottom-up, so each host is tested against its real dependency.
 2. Tier 1 attack scenarios → findings report
 3. Tier 2: monitoring, CI, backups + restore test
 4. Tier 3: k3s for app tier, vuln scanning (Nuclei/Greenbone), ISO 27001/NIS2 controls map
+
+**Method for each layer:** build by hand → test → compare with code (`terraform import` + `plan`, or `ansible-playbook --check --diff`) → destroy and rebuild from code → re-test. The final state is always Terraform + Ansible. Exception: the network layer stays up between sessions and its rebuild test is deferred to task 1.20; paid resources are still removed after each session.
 
 **Do not start a tier until the previous tier's write-up is done.**
 
@@ -199,11 +239,11 @@ Everything runs on AWS. There is no VPS phase, and no VPS is used anywhere in th
 secure-mailbridge-lab/
   terraform/
     modules/      network/ security/ compute/   (shared)
-    persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, state bucket, DNS
-    lab/          destroyed after every session: VPC, subnets, SGs, VMs (uses modules/)
-  ansible/        roles: fw-ips/ proxy/ app/ db/ siem/ mon/
+    persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, flow log bucket, state bucket, Route 53 zone, ECR repository, Budget
+    lab/          VPC, subnets, SGs (free, kept between sessions) · VMs, Elastic IP, vpn.<domain> record (removed after every session) (uses modules/)
+  ansible/        roles: fw_ips/ proxy/ app/ db/ siem/ mon/   (Ansible role names cannot contain hyphens; the host stays fw-ips)
   suricata-rules/ custom rules + test pcaps
-  docs/           ARCHITECTURE.md · threat-model.md · findings-report.md · iso27001-map.md
+  docs/           ARCHITECTURE.md · TASKS.md · decisions.md · rationale.md · progress.md · threat-model.md · findings-report.md · iso27001-map.md
   .github/workflows/
   README.md       one-command deploy + teardown
 ```

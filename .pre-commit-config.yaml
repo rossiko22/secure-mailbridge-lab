@@ -1,0 +1,16 @@
+# Local hooks use the gitleaks and terraform binaries already installed.
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged changes)
+        entry: gitleaks protect --staged --redact --no-banner
+        language: system
+        pass_filenames: false
+        always_run: true
+      - id: terraform-fmt
+        name: terraform fmt
+        entry: terraform fmt -recursive terraform
+        language: system
+        pass_filenames: false
+        files: \.tf(vars)?$
