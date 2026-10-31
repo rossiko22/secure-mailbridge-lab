@@ -1,0 +1,35 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.terraform/
+*.tfvars
+!*.tfvars.example
+
+# VPN / PKI / keys
+*.ovpn
+*.key
+*.pem
+*.p12
+*.crt
+*.csr
+pki/
+ta.key
+
+# Secrets / env
+.env
+.env.*
+!.env.example
+
+# Ansible
+*.retry
+.vault_pass*
+
+# Claude Code local overrides
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/

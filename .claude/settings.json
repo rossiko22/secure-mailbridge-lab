@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(terraform apply:*)",
+      "Bash(terraform destroy:*)",
+      "Bash(make up:*)",
+      "Bash(make down:*)",
+      "Bash(aws ec2 run-instances:*)",
+      "Read(./**/*.tfstate)",
+      "Read(./**/*.ovpn)",
+      "Read(./**/*.key)",
+      "Read(./.env)"
+    ],
+    "ask": [
+      "Bash(terraform plan:*)",
+      "Bash(ansible-playbook:*)",
+      "Bash(aws:*)"
+    ]
+  }
+}
