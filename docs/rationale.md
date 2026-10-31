@@ -183,3 +183,17 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** Logs still arrive minutes late, so this is for investigation rather than live alerting, and Wazuh does not read them in Tier 1. Queries mean downloading files or using Athena.
 
 **Verify once built.** `aws ec2 describe-flow-logs` shows `ACTIVE`. After a blocked connection attempt, objects appear in the bucket and contain a `REJECT` record for that address and port.
+
+---
+
+## 13. NACL return traffic and service port denies (2026-10-31)
+
+**Problem.** NACLs are stateless, so replies need their own rules, and those replies land on ephemeral ports (1024–65535). Replies from the internet can come from any address, so private subnets need that range open from `0.0.0.0/0`. The range also contains ports 3000, 5432, 1514 and 1515, so a simple return rule would quietly undo the "one hop" design at this layer.
+
+**Options.** A: an explicit deny for each service port, numbered just before the return rule. B: return rules only, relying on security groups. C: narrow return rules to known sources, which cannot work for internet replies.
+
+**Chosen: A.** NACL rules are checked in number order and the first match wins. Allowing the legitimate source at 100, denying the same port from everywhere at 105 and allowing ephemeral ports at 110 means the port stays limited to its one permitted source. The second layer then stands alone, as §4 intends.
+
+**Trade-off accepted.** Three extra rules to maintain, and any new service in that port range needs its own deny. NACLs stay coarse: they work on subnets, so they cannot express per-host rules the way security groups can. Traffic to the Amazon DNS resolver and metadata service is not filtered by NACLs.
+
+**Verify once built.** With the `db` security group temporarily opened to the DMZ, `nc -zv 10.0.4.10 5432` from `proxy` still times out and flow logs show `REJECT`. Restore the group afterwards.

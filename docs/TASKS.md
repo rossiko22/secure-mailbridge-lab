@@ -13,7 +13,7 @@ it is verified, and the relevant doc section is updated.
 ## Current position
 
 - **Phase:** 1, Tier 1 on AWS (0.5–0.7 still open; 0.5 deferred)
-- **Next task:** 1.5a (hand-build the network), after the last check on 1.1
+- **Next task:** 1.5b (compare the hand-built network with code)
 
 ## Open items
 
@@ -46,7 +46,7 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 **Every `terraform apply`, `destroy` or AWS resource creation needs Marko's explicit go-ahead.**
 
 **Foundation**
-- [~] **1.1** Account safety: root MFA, admin IAM user with MFA, no root access keys · M
+- [x] **1.1** Account safety: root MFA, admin IAM user with MFA, no root access keys · M
   - Verify: IAM Dashboard shows root MFA enabled; console sign-in as the admin user works
 - [x] **1.1b** AWS Budget alert at $20, by hand now, imported into `terraform/persistent` with 1.2 (day one, §12) · M
   - Verify: in CloudShell, `aws budgets describe-budget --account-id <id> --budget-name mailbridge-lab-monthly` shows a 20 USD limit and `FilterExpression` excludes `Credit` and `Refund`
@@ -57,10 +57,10 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 - [~] **1.3** `modules/network`: VPC, 5 subnets, routes, IGW, standalone fw-ips ENI, flow logs · C
   - Note: private routes show as `blackhole` until fw-ips attaches; the S3 endpoint moved to T2.3
   - Verify: plan shows no NAT Gateway, ALB or interface endpoint
-- [~] **1.4** `modules/security`: security groups done, NACLs still to do (§4) · C
-  - Open: checkov `CKV2_AWS_5` until the compute module attaches the groups
+- [~] **1.4** `modules/security`: security groups and NACLs from §4 · C
+  - Open: checkov `CKV2_AWS_5` until compute attaches the groups; `CKV2_AWS_1` cannot see subnets passed in from another module
   - Verify: `checkov` passes; line-by-line review against the §4 table
-- [ ] **1.5a** Hand-build the network, security groups and flow logs in the console, without reading the modules · M
+- [x] **1.5a** Hand-build the network, security groups and flow logs in the console, without reading the modules · M
   - Verify: `aws ec2 describe-subnets` shows the 5 CIDRs from §2; `aws ec2 describe-flow-logs` shows `ACTIVE`
 - [ ] **1.5b** `terraform/lab` root stack, network only: import the hand build, compare · M+C
   - Verify: `terraform plan` reports no changes

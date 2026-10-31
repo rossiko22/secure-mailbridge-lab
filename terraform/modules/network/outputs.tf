@@ -22,3 +22,8 @@ output "fw_private_ip" {
   description = "fw-ips private address."
   value       = var.fw_private_ip
 }
+
+output "subnet_cidrs" {
+  description = "Subnet name to CIDR."
+  value       = var.subnet_cidrs
+}

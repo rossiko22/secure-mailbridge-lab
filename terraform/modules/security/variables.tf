@@ -47,3 +47,13 @@ variable "open_https_test_window" {
   type        = bool
   default     = false
 }
+
+variable "subnet_ids" {
+  description = "Subnet name to subnet ID, from the network module."
+  type        = map(string)
+}
+
+variable "subnet_cidrs" {
+  description = "Subnet name to CIDR, from the network module."
+  type        = map(string)
+}

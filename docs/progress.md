@@ -12,4 +12,10 @@ Update at the end of every session: what was done, what's verified, next step.
 - Verified locally only: `terraform fmt`, `terraform validate`, `tflint`, `checkov` run; nothing planned or applied. Open checkov failures are listed in TASKS.md 1.3 and 1.4.
 - Decided: hand build, compare, rebuild per layer (decision 11).
 - Done: Budget created by hand and verified (1.1b); flow logs added to modules/network (decision 12).
-- Next: confirm marko-admin MFA (1.1), then hand-build the network (1.5a). NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.
+- Done: account safety (1.1); VPC and five subnets built by hand and checked in CloudShell.
+- Done: internet gateway, public and private route tables, fw-ips ENI (source/dest check off); checked in CloudShell.
+- Done: flow log bucket (public access blocked, 30-day lifecycle) and VPC flow log `ACTIVE`; checked in CloudShell.
+- Done: five Tier 1 security groups built by hand, rules checked against §4; default group emptied; sg-fw attached to the fw-ips ENI.
+- Done: NACL rules designed and documented (decision 13).
+- Done: five NACLs built by hand and associated with their subnets; 1.5a finished; NACLs added to modules/security, 50 rules matched against the live output.
+- Next: compare the hand-built network with code (1.5b). NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.

@@ -114,6 +114,18 @@ The VPC default security group has no rules.
 
 Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nftables on fw-ips.
 
+**Network ACLs (stateless, one per subnet, first match wins, default deny).** `eph` is TCP/UDP 1024–65535.
+
+| Subnet | Inbound | Outbound |
+|---|---|---|
+| public | 100 UDP 1194 from 0.0.0.0/0 · 110 all from 10.0.0.0/16 · 120 TCP eph from 0.0.0.0/0 · 130 UDP eph from 0.0.0.0/0 | 100 all to 10.0.0.0/16 · 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 UDP eph to 0.0.0.0/0 |
+| dmz | 100 TCP 443 from 10.8.0.0/22 · 110 TCP eph from 0.0.0.0/0 · 120 UDP eph from 0.0.0.0/0 | 100 TCP 3000 to 10.0.3.0/24 · baseline · 150 agents · 160 TCP eph to 10.8.0.0/22 |
+| app | 100 TCP 3000 from 10.0.2.0/24 · 105 deny TCP 3000 from 0.0.0.0/0 · 110 TCP eph from 0.0.0.0/0 · 120 UDP eph from 0.0.0.0/0 | 100 TCP 5432 to 10.0.4.0/24 · baseline · 150 agents · 160 TCP eph to 10.0.2.0/24 |
+| data | 100 TCP 5432 from 10.0.3.0/24 · 105 deny TCP 5432 from 0.0.0.0/0 · 110 TCP eph from 0.0.0.0/0 · 120 UDP eph from 0.0.0.0/0 | baseline · 150 agents · 160 TCP eph to 10.0.3.0/24 |
+| mgmt | 100 TCP 1514–1515 from 10.0.0.0/16 · 105 deny TCP 1514–1515 from 0.0.0.0/0 · 110 TCP 443 from 10.8.1.0/24 · 120 TCP eph from 0.0.0.0/0 · 130 UDP eph from 0.0.0.0/0 | baseline · 160 TCP eph to 10.0.0.0/16 · 170 TCP eph to 10.8.1.0/24 |
+
+Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 UDP 53 and 140 TCP 53 to 10.0.1.10/32. Agents: TCP 1514–1515 to 10.0.5.0/24. A 443 test window also needs inbound TCP 443 and outbound TCP eph to 0.0.0.0/0 on public.
+
 **nftables on fw-ips (core rules):**
 - `tun0` user pool (10.8.0.0/24) → only `10.0.2.10:443`
 - `tun0` admin pool (10.8.1.0/24) → proxy:443 + mgmt subnet
