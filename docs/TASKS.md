@@ -11,7 +11,7 @@ it is verified, and the relevant doc section is updated.
 ## Current position
 
 - **Phase:** 0, repo foundation
-- **Next task:** 0.4
+- **Next task:** 0.5
 
 ## Open questions
 
@@ -29,7 +29,7 @@ it is verified, and the relevant doc section is updated.
   - Verify: no open box left in the list above
 - [ ] **0.3** Confirm the moved permissions are active · M
   - Verify: restart Claude Code, run `/permissions`; `terraform apply` appears under deny
-- [ ] **0.4** Pre-commit: `gitleaks`, `terraform fmt` · C
+- [x] **0.4** Pre-commit: `gitleaks`, `terraform fmt` · C
   - Verify: `pre-commit run --all-files` passes; a fake AWS key in a test commit is blocked
 - [ ] **0.5** CI workflow: `terraform fmt -check`, `terraform validate`, `tflint`, `checkov`, `ansible-lint`, `gitleaks` · C
   - Verify: the first PR shows all six checks green
