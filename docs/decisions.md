@@ -40,3 +40,6 @@ Format: date · decision · why
 - 2026-11-01 · The real domain reaches Ansible through an untracked vars file · the repo is public and the name isn't a secret, so an SSM read and IAM grant aren't justified
 - 2026-11-01 · Private hosts keep AmazonProvidedDNS, recorded as a known gap for scenario 2.2 · a DHCP change would not stop direct queries to 10.0.0.2, and it would make fw-ips depend on its own Unbound
 - 2026-11-01 · Unbound doesn't validate DNSSEC · AmazonProvidedDNS returns no signatures, so validation fails every forwarded name, and TLS still stops a forged address being trusted
+- 2026-11-01 · Suricata covers network behaviour and TLS metadata; ModSecurity alone inspects web payloads · TLS ends at Nginx, past fw-ips, and decrypting on the internet-facing host would put private keys there
+- 2026-11-01 · Suricata fails closed, with `queue` and no `bypass` · an attacker can't stop it to get unscanned access, and SSM and the VPN stay up for recovery
+- 2026-11-01 · Suricata uses the Ubuntu package and ET Open in alert-only mode, with `eve.json` limited and rotated · no extra package source, broad detection without false positives cutting traffic, and a protected disk

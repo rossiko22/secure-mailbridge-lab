@@ -133,7 +133,7 @@ Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 U
 - private subnets → internet: TCP 443 (+ DNS via Unbound, NTP) only, logged
 - to fw-ips itself: UDP 1194, DHCP replies, DNS to 10.0.1.10 from private subnets and VPN pools, ping from the admin pool only; `output` stays open
 - everything else: drop + log → Wazuh
-- forwarded `tun0` traffic → NFQUEUE → Suricata (inline, can drop), in a separate chain after the firewall rules
+- forwarded `tun0` traffic → NFQUEUE → Suricata (inline, can drop), in a separate chain after the firewall rules, failing closed
 
 ---
 
@@ -204,7 +204,7 @@ Jest + Supertest (API) · Playwright (UI) · k6 (load) · Trivy (image scan) · 
 
 | Position | Tests |
 |---|---|
-| Outside (internet) | Scan: only UDP 1194 should respond. During 443 window: SQLi/XSS/brute force vs WAF + Suricata |
+| Outside (internet) | Scan: only UDP 1194 should respond. During 443 window: SQLi/XSS/brute force vs ModSecurity; Suricata sees scans and TLS metadata, not payloads, because TLS ends at Nginx |
 | Inside (stolen VPN cert) | What's reachable? What does Suricata/Wazuh see? Time to revoke via CRL? |
 | Malicious email | HTML/JS payload in an incoming email → is it sanitized? CSP? |
 | Access control | Can user A read user B's mailbox by changing IDs? |

@@ -13,7 +13,7 @@ it is verified, and the relevant doc section is updated.
 ## Current position
 
 - **Phase:** 1, Tier 1 on AWS (0.6 and 0.7 still open)
-- **Next task:** 1.11 (Suricata install and NFQUEUE wiring). 1.6, 1.7b, 1.8, 1.9a, 1.9b and 1.10 are hand-verified; their code is still to do.
+- **Next task:** 1.12 (custom Suricata rules, written by Marko). 1.6, 1.7b, 1.8, 1.9a, 1.9b, 1.10 and 1.11 are hand-verified; their code is still to do.
 
 ## Open items
 
@@ -87,9 +87,9 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 - [x] **1.9b** Core nftables ruleset: full §4 policy on top of 1.9a · **C** (Marko explicitly asked Claude to write this one)
   - Note: verified by hand, including a reboot. No proxy exists yet, so 443 was shown as not dropped; a working connection is proved in 1.15. The role tasks that install the files are still to do.
   - Verify: `nft list ruleset`; user pool reaches only 10.0.2.10:443, other traffic is dropped and logged; SSM still `Online`
-- [~] **1.10** Hand build verified for admin and user pools; the `fw_ips` role part is still to do, and a reboot test of Unbound is pending. `fw_ips` role: Unbound with the private `mail.<domain>` record; push a route to 10.0.1.10/32 to VPN clients (decision 27) · C
+- [~] **1.10** Hand build verified for admin and user pools, including a reboot; the `fw_ips` role part is still to do. `fw_ips` role: Unbound with the private `mail.<domain>` record; push a route to 10.0.1.10/32 to VPN clients (decision 27) · C
   - Verify: `dig @10.0.1.10 mail.<domain> +short` from the VPN returns 10.0.2.10
-- [ ] **1.11** `fw_ips` role: Suricata install, NFQUEUE wiring, `eve.json` · C
+- [~] **1.11** Hand build verified, including fail-closed and a reboot, using 528 MB of RAM with ET Open; the `fw_ips` role part is still to do. `fw_ips` role: Suricata install, NFQUEUE wiring, `eve.json` · C
   - Verify: `suricata -T` passes; `sudo tail -f eve.json` shows flows while using the VPN
 - [ ] **1.12** Custom Suricata rules and test pcaps · **M**
   - Verify: `suricata -r <pcap> -S <rules>` raises the expected alert; live traffic is dropped inline
