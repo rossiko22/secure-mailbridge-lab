@@ -253,3 +253,101 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** Pinned versions need updating by hand, and a skip can go stale if nobody removes it.
 
 **Verify once built.** The pull request shows six green checks. `grep -rn 'checkov:skip' terraform` lists each skip with its reason.
+
+---
+
+## 18. fw-ips operating system (2026-11-01)
+
+**Problem.** `ARCHITECTURE.md` did not set an operating system, and fw-ips runs the most security-critical software in the lab: OpenVPN, nftables, Suricata and Unbound.
+
+**Options.** A: Ubuntu 24.04 LTS. B: Amazon Linux 2023. C: Debian 12.
+
+**Chosen: A.** An LTS release gets security updates for years, so unattended updates stay meaningful for the life of the lab. The official Canonical AMI ships with the SSM agent, which Session Manager needs from first boot. The packages the host depends on are mainstream on Ubuntu, and most documentation and interview examples assume Debian-family tooling. Amazon Linux fits AWS closely but has a smaller package set for this stack. Debian would also work, but its AWS images need more checking around the SSM agent.
+
+**Trade-off accepted.** Ubuntu installs the SSM agent as a snap, which is less plain than an apt package, and its default mirrors commonly use port 80, which the public NACL blocks. That second point is tracked as an open item and tested right after launch.
+
+**Verify once built.** On fw-ips, `lsb_release -d` prints `Ubuntu 24.04` and `snap list amazon-ssm-agent` lists the agent.
+
+---
+
+## 19. Delegated subdomain for `<domain>` (2026-11-01)
+
+**Problem.** The lab needs a public DNS zone in Route 53 for `vpn.<domain>` and Certbot's DNS-01 challenge. Marko already owns domains, so none needs buying, but they already have DNS records, including email forwarding.
+
+**Options.** A: delegate one subdomain of an existing domain to Route 53. B: move a whole existing domain to Route 53. C: use a different owned domain that may be serving a live site.
+
+**Chosen: A.** NS records say which servers answer for a name. Adding NS records for one subdomain hands over only that subdomain, while the parent's provider keeps answering for everything else. Moving the whole domain would break email forwarding until those records were recreated. This also limits blast radius, because a mistake in the lab zone cannot touch the parent. Certbot and the proxy role work unchanged, since the `_acme-challenge` record sits inside the delegated zone. The real name stays out of this public repo, in line with keeping the state bucket name private.
+
+**Trade-off accepted.** Names are one label longer, and DNS now spans two providers. The zone costs about $0.50 a month and stays between sessions.
+
+**Verify once built.** `dig +short NS <domain>` returns the four Route 53 name servers, and the parent domain's MX records are unchanged.
+
+---
+
+## 20. Package updates over HTTPS (2026-11-01)
+
+**Problem.** Ubuntu's default apt sources use `http://`, but the public NACL allows outbound TCP 443 and not 80. A test on fw-ips confirmed it: the HTTP mirror timed out, and the HTTPS regional mirror returned 200.
+
+**Options.** A: point apt at the HTTPS regional mirror. B: open outbound TCP 80. C: run an own package mirror or proxy.
+
+**Chosen: A.** apt already verifies packages with Ubuntu's GPG signatures, so the choice is not about package integrity. It is about firewall policy. HTTPS needs no change to §4, while opening port 80 would widen the NACL and nftables policy for all traffic, not only updates. HTTPS also hides which packages a host installs from anyone watching the network. C gives the most control but adds a service to run and pay for. Marko wants to discuss it after Tier 1, so it is parked as an open item.
+
+**Trade-off accepted.** A new instance starts with `http://` sources, so every Ansible role must set HTTPS before installing anything.
+
+**Verify once built.** `grep -rh '^URIs:' /etc/apt/sources.list.d/` shows only `https://`, and `sudo apt-get update` finishes with no `Err:` or `Failed to fetch`.
+
+---
+
+## 21. Offline VPN CA (2026-11-01)
+
+**Problem.** OpenVPN trusts any certificate the CA signed, and the name in a certificate selects the user or admin pool. Whoever holds the CA private key can issue an admin identity. The docs did not say where that key lives.
+
+**Options.** A: CA on the laptop, with an encrypted backup in SSM. B: CA on fw-ips, with a backup in SSM. C: CA in SSM, fetched to fw-ips only for signing.
+
+**Chosen: A.** fw-ips is the only internet-facing host, and it does not need the CA key: it verifies clients with the public `ca.crt` and needs only its own server key and the CRL. With an offline CA, full compromise of fw-ips does not give the attacker the power to mint certificates. B loses the whole PKI on that compromise. C has the same exposure as B, because the fw-ips role must be allowed to read the key. The backup uses `/vpn/`, not `/mailbridge/`, because the app role can read `/mailbridge/*`. The key is passphrase-encrypted before it reaches SSM, and decision 22 removes parameter read from the instance roles. Without decision 22 the passphrase would be the only protection, because `AmazonSSMManagedInstanceCore` can read and decrypt the backup.
+
+**Trade-off accepted.** Issuing and revoking happen on the laptop, and each revocation needs a new CRL copied to fw-ips, which slows the response measured in scenario 2.2. Losing the laptop or the passphrase means restoring from the backup or rebuilding the PKI. The CRL also has an expiry, and OpenVPN rejects clients once it lapses, so it must be re-signed in time. The backup holds the encrypted key and `ca.crt`, not easy-rsa's certificate database, so a restore brings back signing but not the record of issued certs; those would be reissued.
+
+**Verify once built.** `sudo find / -name 'ca.key' -not -path '/proc/*' -not -path '/usr/share/doc/*'` on fw-ips prints nothing (OpenVPN ships a sample `ca.key` under `/usr/share/doc`). `pki/private/ca.key` on the laptop starts with `ENCRYPTED PRIVATE KEY`. `aws ssm describe-parameters` shows the `/vpn/` parameter as `SecureString`.
+
+---
+
+## 22. Minimal SSM policy for instance roles (2026-11-01)
+
+**Problem.** §7 gave every host `AmazonSSMManagedInstanceCore`, assumed to be the SSM minimum. Reading the policy showed `ssm:GetParameter` and `ssm:GetParameters` on `Resource: *`, and the IAM simulator returned `allowed` for the fw-ips role. The `aws/ssm` KMS key policy decrypts through SSM for any principal in the account, so `SecureString` adds no restriction here. Any host could read the CA backup and every `/mailbridge/*` secret, which defeats one role per instance.
+
+**Options.** A: a customer-managed copy of the policy without the two parameter actions, plus a narrow grant per host. B: keep the AWS policy and add an explicit `Deny` per host and path. C: encrypt secrets with a customer-managed KMS key.
+
+**Chosen: A.** It removes the cause on every host, costs nothing and fails safe: a new host reads nothing until it is granted access. B fails open, because one forgotten `Deny` exposes the secrets again. C also fails safe but costs about $1 a month per key and leaves the broad permission in place.
+
+**Trade-off accepted.** The policy is maintained here, so AWS's updates to the managed policy do not arrive automatically. If a future agent feature needs another action, it has to be added by hand.
+
+**Verify once built.** `aws iam simulate-principal-policy` for the fw-ips role returns `implicitDeny` on `/vpn/ca/key` and `/mailbridge/*` and `allowed` on `/vpn/fw-ips/*`. Session Manager still connects and the instance stays `Online`.
+
+---
+
+## 23. Dynamic VPN user addresses (2026-11-01)
+
+**Problem.** §5 places certificates in pools with `client-config-dir`, but did not say how user devices get addresses or what happens to a valid certificate with no `ccd` file.
+
+**Options.** A: `ccd-exclusive` with a fixed address per device. B: a dynamic user pool, with a `ccd` file only for admin devices.
+
+**Chosen: B.** Users draw from a pool in 10.8.0.0/24 and the admin device keeps a fixed address in 10.8.1.0/24. A would map each address directly to one device and refuse any certificate with no file. B fits Marko's goal for the attack scenarios: after a stolen certificate is used, the investigation has to prove who held an address at a given time from OpenVPN's connection logs in Wazuh, as it would in a larger VPN.
+
+**Trade-off accepted.** OpenVPN logs become required evidence, so losing them loses attribution. Alerts and connection events must be matched by time, which depends on NTP. nftables and Suricata cannot target one user device by address. Any valid certificate can connect, so revocation is the only way to cut one off. An admin certificate with a missing `ccd` file lands in the user pool.
+
+**Verify once built.** A user certificate gets an address in 10.8.0.0/24, `marko-laptop` gets 10.8.1.10, and `journalctl -u openvpn-server@server` shows each certificate's name with its address. Attribution must use the `primary virtual IP` line, because `MULTI_sva: pool returned` is logged before the `ccd` file is applied and can show an address the client never used.
+
+---
+
+## 24. Stop fw-ips between sessions during the hand build (2026-11-01)
+
+**Problem.** The method says paid hand-built resources are removed after each session, but terminating fw-ips would delete its hand-made OpenVPN config, which is not yet in Ansible.
+
+**Options.** A: stop the instance and release the Elastic IP. B: stop the instance and keep the Elastic IP. C: terminate and rebuild by hand each session.
+
+**Chosen: A, as a documented exception.** Stopping ends compute charges and keeps the config on the disk. Releasing the Elastic IP removes its hourly charge. Client profiles use `vpn.<domain>`, so only the DNS record changes. C would repeat the build each session. The exception ends when the Ansible role can rebuild fw-ips, and then `terraform destroy` applies as §12 says.
+
+**Trade-off accepted.** The disk bills about $2 a month while stopped. Each session starts by allocating a new address and updating the record, and until then the `vpn` record points at an address AWS may give to someone else. Clients would still refuse it, because `verify-x509-name` and `tls-crypt` fail.
+
+**Verify once built.** After stopping, `aws ec2 describe-addresses` returns nothing and the instance state is `stopped`.

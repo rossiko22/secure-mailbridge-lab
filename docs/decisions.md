@@ -24,3 +24,10 @@ Format: date · decision · why
 - 2026-10-31 · Rebuild test 1.5c deferred; the hand-built network stays up between sessions · Marko chose to keep the hand build, and the network is free while idle; paid resources are still removed after each session
 - 2026-10-31 · CI pins actions by commit and tools by version, with documented checkov skips for two false positives · a moved tag cannot change what runs, and each skip states its reason
 - 2026-10-31 · Ansible role is named fw_ips while the host stays fw-ips · role names cannot contain hyphens, and ansible-lint enforces this
+- 2026-11-01 · fw-ips runs Ubuntu 24.04 LTS · long support window, SSM agent preinstalled on the official image, and first-class packages for the fw-ips stack
+- 2026-11-01 · `<domain>` is a subdomain delegated to Route 53 by NS records at the parent's DNS provider; the real name stays out of the repo · the parent domain's email forwarding and other records stay untouched, and a lab mistake cannot affect them
+- 2026-11-01 · apt uses the HTTPS regional Ubuntu mirror on all hosts · port 80 stays closed, so §4 is unchanged; an own mirror or proxy is parked for discussion after Tier 1
+- 2026-11-01 · VPN CA is offline on the laptop, with an encrypted backup in SSM under `/vpn/` · taking over the internet-facing host must not let an attacker issue certificates, and `/mailbridge/*` is readable by the app role
+- 2026-11-01 · Instance roles use `mailbridge-lab-ssm-min` instead of `AmazonSSMManagedInstanceCore` · the managed policy allows `ssm:GetParameter` on every parameter, and the `aws/ssm` key decrypts for anyone allowed to call SSM, so any host could read every secret
+- 2026-11-01 · VPN users get dynamic addresses, and only the admin device has a `ccd` file with a fixed address · Marko chose this because proving who held an IP from the logs makes the attack scenarios more realistic
+- 2026-11-01 · During the fw-ips hand build, stop the instance and release the Elastic IP between sessions, as a documented exception to removing paid resources · terminating would delete the hand-built config, and the disk costs far less than rebuilding each session
