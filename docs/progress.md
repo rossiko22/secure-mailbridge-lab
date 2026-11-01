@@ -31,3 +31,8 @@ Update at the end of every session: what was done, what's verified, next step.
 
 ## 2026-11-01
 - Verified: 1.3 and 1.4 closed. No NAT Gateway, ALB or endpoint resource exists in the code; checkov is green on main; every Tier 1 security group and NACL rule matches §4 line by line. `terraform plan` was not re-run (session expired); the last clean plan predates only comment-level changes to the Terraform code.
+- Done by hand: fw-ips (Ubuntu 24.04, role, encrypted gp3, Elastic IP); patched, apt over HTTPS; Route 53 zone delegated and `vpn` record added; offline CA on the laptop with backups in SSM; server and device certs, one test revocation; `/vpn/fw-ips/*` parameters fetched to the VM; OpenVPN running.
+- Found and fixed: `AmazonSSMManagedInstanceCore` could read every parameter; the fw-ips role now uses `mailbridge-lab-ssm-min` and a grant for `/vpn/fw-ips/*` (decision 22).
+- Verified: IMDSv2 returns 401 without a token; simulator and a real call deny `/vpn/ca/key` from fw-ips; server cert and CRL verify on the VM with the revoked serial listed; no CA key on the VM; user cert got 10.8.0.x and admin cert got 10.8.1.10; `dig` confirms delegation with parent MX unchanged.
+- Not done: Ansible and Terraform for fw-ips. Role resources, parameters and the zone were made by hand and aren't in code yet. The cause of the snap `aws` writing 0 bytes to a file is unknown (a pipe works).
+- Next: `Read START.md`. Allocate and associate a new Elastic IP, start fw-ips, update the `vpn` record, and confirm a VPN connection. Then Marko writes the 1.9a ruleset for review.

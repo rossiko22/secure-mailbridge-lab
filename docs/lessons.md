@@ -192,3 +192,129 @@ The full reasoning is in `rationale.md`.
 ### What comes next
 
 Task 1.6 builds fw-ips, your first EC2 instance. Running costs begin there. Before launch, decide what happens to the instance between sessions. Then come OpenVPN and the NAT rules you'll write yourself.
+
+## 2026-11-01
+
+### Today's topic: building the front door, and checking what a policy really allows
+
+Yesterday you built roads with nothing on them. Today you launched your first server, fw-ips, gave it an identity, built a private certificate authority and got real devices connecting through OpenVPN. fw-ips doesn't route traffic yet. That starts with your NAT rules.
+
+The most valuable moment wasn't a build step. A statement in our own docs turned out to be false, and checking it uncovered a design flaw that would have exposed every secret to every host.
+
+### The big picture
+
+Everything entering the lab passes through fw-ips, so it's the highest-risk host. It's internet-facing, so assume it could one day be compromised, and ask "what would an attacker get?" That question drove the main decisions today: the CA lives elsewhere, the host can only read its own secrets, and it has no SSH key to steal.
+
+This idea is **assume breach**: design so that one compromised host doesn't hand over everything.
+
+### Part 1: Closing tasks honestly
+
+Tasks 1.3 and 1.4 were closed by checking what their verify steps required: no paid resources in the code, checkov green on main, and every security group and NACL rule compared with §4. `terraform plan` couldn't run because the login had expired. Rather than skip that silently, we checked the Terraform history and found that only comments had changed since the last clean plan, and recorded that in `progress.md`.
+
+The habit to keep: when you can't run a check, say so, and state what evidence you used instead.
+
+### Part 2: The instance role
+
+An instance role gives a VM temporary credentials through the metadata service, so no keys are stored on disk. It has two parts: a **trust policy** saying who may use the role (here, `ec2.amazonaws.com`) and **permission policies** saying what it can do. The console also creates an **instance profile**, the wrapper that actually attaches a role to an instance.
+
+### Part 3: Launching fw-ips
+
+The settings that matter, and why:
+
+- **No key pair:** Session Manager doesn't need one, so there's no key file to steal.
+- **Existing ENI, no auto-assigned public IP:** the address, `sg-fw` and routes already existed. Attaching the instance turned the `blackhole` routes `active`.
+- **Encrypted gp3:** the disk holds private keys.
+- **Shutdown behavior Stop:** "Terminate" would delete the VM on an internal shutdown.
+- **Credit specification Standard:** the t3 default is Unlimited, which can bill extra. Standard slows down instead.
+- **IMDSv2 required, hop limit 1:** this blocks the classic attack where a forged web request steals a host's role credentials. A request without a token now gets `401`, which we confirmed.
+
+SSM only came `Online` after the Elastic IP was attached, because the agent connects outbound and a host in a public subnet still needs a public address to reach the internet.
+
+### Part 4: The package mirror test
+
+The public NACL allows outbound 443 but not 80, and Ubuntu's sources used `http://`. The test proved it: HTTP timed out, and HTTPS returned 200. We switched apt to the HTTPS regional mirror rather than opening port 80.
+
+A subtle point: apt already verifies packages with GPG signatures, so HTTPS wasn't needed for package integrity. The choice was about firewall policy, because opening port 80 widens the rules for all traffic, not only updates. An own mirror or proxy is parked for after Tier 1.
+
+### Part 5: Delegating a subdomain
+
+NS records say which servers answer for a name. Moving a whole domain would have broken the email forwarding on it, so you delegated one subdomain instead, by adding NS records for it at the parent's DNS provider. Everything else stayed put, which `dig` confirmed. This limits **blast radius**: a mistake in the lab zone can't touch the parent.
+
+### Part 6: The offline CA
+
+OpenVPN accepts any certificate your CA signed, and a certificate's name picks its pool. So whoever holds the CA private key can mint themselves an admin. The server never needs that key, because it verifies clients with the public `ca.crt`.
+
+So the CA stays on your laptop, passphrase-protected, and fw-ips receives only `ca.crt`, its server cert and key, the CRL and the `tls-crypt` key. Taking over fw-ips doesn't give an attacker the ability to issue certificates. The cost is that revoking means signing a new CRL on the laptop and copying it over, which scenario 2.2 will measure.
+
+We chose EC keys on `secp384r1` for small keys and fast handshakes. The server key has no passphrase because OpenVPN must start unattended after a reboot, which is why it's the one unencrypted key and has strict permissions. Server and client certificates are marked differently, so a stolen client cert can't impersonate the server.
+
+A CRL is a signed list of revoked serials. `revoke` alone changes nothing on the server, because only a new `gen-crl` and a copy to fw-ips tell it anything. If a CRL expires, OpenVPN rejects everyone, so it must be re-signed before then.
+
+### Part 7: The finding of the day
+
+Writing up the CA backup, we stated that no instance role could read `/vpn/`. Nobody had checked. Reading `AmazonSSMManagedInstanceCore` showed `ssm:GetParameter` on `Resource: *`, and the IAM simulator returned `allowed`. Encryption didn't help either, because the default `aws/ssm` KMS key decrypts through SSM for anyone in the account allowed to call it.
+
+So every host could have read every secret, including the proxy reading the database password. That defeats "one role per instance", and it was in the design from the start.
+
+The fix was a customer-managed copy of the policy, minus those two actions, plus a narrow inline grant for `/vpn/fw-ips/*`. Now a new host reads nothing until granted, which is called **failing safe**. An explicit `Deny` per host would have failed open: forget one and the secrets are readable. The simulator then returned `implicitDeny` for the CA key, and a real call from fw-ips returned `AccessDeniedException`.
+
+The lessons: a managed policy's name tells you nothing about what it grants, "encrypted" doesn't mean "restricted", and a test from the real host beats a simulator.
+
+### Part 8: tls-crypt and OpenVPN
+
+`tls-crypt` encrypts and authenticates the handshake with a shared key. A packet without it is dropped before TLS starts, so scanners get nothing and your certificates stay hidden. The weakness is that the key is shared by all clients, so a stolen profile exposes it, though it still doesn't let anyone in without a valid cert.
+
+`tun0` uses a `/23`, covering both pools. Automatic addresses come only from the user range, and a `ccd` file gives the admin device its fixed address and an extra route.
+
+You chose dynamic user addresses over `ccd-exclusive`, so that scenario 2.2 has to prove who held an address from the logs. Know the cost: those logs become required evidence, and any valid cert can connect, so revocation is the only way to cut one off.
+
+The log taught something too. `MULTI_sva: pool returned` showed the admin device with a user address, but that line comes before the `ccd` file is applied. The final address is on the `primary virtual IP` line, and Wazuh must use that one.
+
+### Mistakes and what they taught
+
+| What happened | The lesson |
+|---|---|
+| Docs claimed no role could read `/vpn/` | A security claim needs a test, not an assumption |
+| First simulator query printed a strange line | With several resources, results sit in a nested field |
+| Steps were checked before they were done | Read each output against the expected one |
+| Multi-line pastes lost lines to `sudo` and `apt-get` | Those commands read stdin; paste one command at a time |
+| `KEY-MATCHES-CERT` passed with empty files | A comparison of two empty values is true; check for empty first |
+| Fetch wrote 0-byte files with exit 0 | Exit 0 isn't proof; the snap `aws` wrote nothing to a file but worked through a pipe. The root cause is still unknown |
+| First guess blamed `umask` | Test one thing at a time instead of changing fixes on a guess |
+| A `ca.key` turned up on the VM | It was OpenVPN's sample file; look before assuming the worst |
+| `pool returned` showed the wrong address | Read the whole log sequence, not one line |
+
+### Decisions from today
+
+Full reasoning is in `rationale.md`, entries 18 to 24.
+
+| Topic | Choice | Why |
+|---|---|---|
+| fw-ips OS | Ubuntu 24.04 LTS | Long support, SSM agent included |
+| `<domain>` | Delegated subdomain | Parent domain stays untouched |
+| Packages | HTTPS mirror | Port 80 stays closed |
+| VPN CA | Offline on the laptop | Compromising fw-ips can't mint certificates |
+| Instance roles | Own minimal SSM policy | The AWS policy reads every parameter |
+| VPN addresses | Dynamic users, fixed admin | Attribution has to be proven from logs |
+| Between sessions | Stop, release the Elastic IP | Keeps the hand build at almost no cost |
+
+### Interview questions to practise
+
+1. What does IMDSv2 protect against, and why does a hop limit of 1 help?
+2. Why does an instance in a public subnet still need a public IP to reach SSM?
+3. What's the difference between a trust policy and a permission policy?
+4. What is an instance profile?
+5. Why doesn't `AmazonSSMManagedInstanceCore` count as least privilege?
+6. Why didn't `SecureString` stop a host reading the CA backup?
+7. Why does an explicit `Deny` fail open as a design, even though `Deny` beats `Allow`?
+8. Why doesn't fw-ips need the CA private key?
+9. Walk through revoking a stolen certificate. When does it actually stop working?
+10. What happens when a CRL expires?
+11. What does `tls-crypt` add on top of TLS, and what's its weakness?
+12. Why was HTTPS for apt a firewall decision and not an integrity decision?
+13. How does delegating a subdomain limit blast radius?
+14. How would you prove which device held a VPN IP at a given time?
+
+### What comes next
+
+You write the 1.9a ruleset: forwarding and NAT for private subnets, with a forward chain that drops by default. Once it's reviewed, a small temporary private VM proves that SSM works through fw-ips. Each session now starts by giving fw-ips a new Elastic IP and updating the `vpn` record.

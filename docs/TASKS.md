@@ -13,14 +13,13 @@ it is verified, and the relevant doc section is updated.
 ## Current position
 
 - **Phase:** 1, Tier 1 on AWS (0.6 and 0.7 still open)
-- **Next task:** 1.6 (fw-ips), after agreeing the approach
+- **Next task:** 1.9a (forwarding and NAT, written by Marko). 1.6, 1.7b and 1.8 are hand-verified; their code is still to do.
 
 ## Open items
 
-- [ ] **Buy the domain** and set its NS records to the Route 53 zone. Needed for 1.2.
-- [ ] **fw-ips operating system:** proposed Ubuntu 24.04 LTS; `ARCHITECTURE.md` does not set one. Needed for 1.6.
-- [ ] **Between sessions:** proposed stop the instance and release the Elastic IP during the hand build, because terminating deletes hand-made config and CA keys. Needed for 1.6.
-- [ ] **Package mirrors:** the public NACL allows outbound 443 only, and default Ubuntu mirrors commonly use port 80. Test straight after launch; try HTTPS mirrors first.
+- [~] **Delegate the subdomain:** zone and NS records built by hand and verified with `dig`, parent MX unchanged. Import the zone in 1.2.
+- [ ] **Each session during the fw-ips hand build:** start by allocating an Elastic IP, associating it with the ENI, starting fw-ips and updating the `vpn` record; end by stopping fw-ips and releasing the Elastic IP (decision 24).
+- [ ] **Own package mirror or proxy:** Marko wants to discuss this later. Parked until Tier 1 is finished; no design change yet.
 - [ ] **SSH over the VPN:** proposed as a daily-use path from the admin pool, with SSM kept for emergencies. Discuss after 1.9b; no design change yet.
 - [ ] **Mailbridge repo location:** where the source lives, so the image can be built and pushed to ECR. Needed for 1.14.
 
@@ -55,6 +54,7 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 - [x] **1.1b** AWS Budget alert at $20, by hand now, imported into `terraform/persistent` with 1.2 (day one, §12) · M
   - Verify: in CloudShell, `aws budgets describe-budget --account-id <id> --budget-name mailbridge-lab-monthly` shows a 20 USD limit and `FilterExpression` excludes `Credit` and `Refund`
 - [ ] **1.2** `terraform/persistent`: state bucket, backup bucket, flow log bucket, Route 53 zone, ECR repository, VPN CA + secrets · C
+  - Note: `/vpn/ca/*` was created by hand. Don't import `/vpn/ca/key` without a plan for its value, because Terraform stores parameter values in state.
   - Verify: Marko reviews `terraform plan` before any apply; no secret values in the repo or in plan output
 
 **Network (free resources)**
@@ -72,10 +72,13 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 
 **fw-ips**
 - [ ] **1.6** Remove the `CKV2_AWS_5` skips as groups get attached. `modules/compute` and IAM: fw-ips instance, IMDSv2, encrypted gp3, `credit_specification = "standard"`, source/dest check off, Elastic IP and `vpn.<domain>` record · C
-  - Verify: `tflint` and `checkov` pass; plan shows `http_tokens = "required"`; `aws ssm start-session` connects; `dig vpn.<domain> +short` matches the Elastic IP
-- [ ] **1.7** `fw_ips` role: easy-rsa PKI, one cert per device, CRL · C
-  - Verify: `openssl crl -in crl.pem -noout -text` lists a test-revoked serial
-- [ ] **1.8** `fw_ips` role: OpenVPN server, §5 hardening, `client-config-dir` pools, profiles using `vpn.<domain>` · C
+  - Note: roles use `mailbridge-lab-ssm-min`, never `AmazonSSMManagedInstanceCore` (decision 22)
+  - Verify: `tflint` and `checkov` pass; plan shows `http_tokens = "required"`; the IAM simulator denies the fw-ips role `ssm:GetParameter` on `/vpn/ca/*` and `/mailbridge/*`; `aws ssm start-session` connects; `dig vpn.<domain> +short` matches the Elastic IP
+- [x] **1.7a** Offline CA on the laptop with easy-rsa, outside the repo: CA, CRL, encrypted key backed up to SSM under `/vpn/` · M+C
+  - Verify: `pki/private/ca.key` starts with `ENCRYPTED PRIVATE KEY`; `openssl crl -in pki/crl.pem -noout -nextupdate` shows a future date; the SSM parameter exists as `SecureString`
+- [~] **1.7b** Hand build verified; the `fw_ips` role part is still to do. Fetch parameters through a pipe, because the snap `aws` wrote 0 bytes when stdout was a file. Sign the server cert and one cert per device on the laptop, revoke a test cert, and have the `fw_ips` role install only the public files, server key and CRL · M+C
+  - Verify: `openssl crl -in crl.pem -noout -text` lists a test-revoked serial; no CA private key exists on fw-ips
+- [~] **1.8** Hand build verified; the `fw_ips` role part is still to do. `fw_ips` role: OpenVPN server, §5 hardening, `client-config-dir` pools, profiles using `vpn.<domain>` · C
   - Verify: user cert gets 10.8.0.x, admin cert gets 10.8.1.x
 - [ ] **1.9a** nftables: forwarding and NAT for private subnets · **M**
   - Note: private hosts reach SSM through fw-ips, so this comes before any of them is configured

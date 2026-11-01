@@ -76,8 +76,9 @@ Deploy: Terraform (infra) + Ansible (config) · Teardown: `terraform destroy` wh
 | siem | t3.medium (t3.large if the indexer struggles) | 50 GB | Wazuh | 1 |
 | mon | t3.small | 20 GB | Prometheus, Grafana, Alertmanager | 2 |
 
-All instances: IMDSv2 required · SSM agent (admin access, no SSH from internet) · unattended security updates · Wazuh agent · node_exporter.
+All instances: IMDSv2 required · SSM agent (admin access, no SSH from internet) · unattended security updates · apt over HTTPS (regional Ubuntu mirror, port 80 stays closed) · Wazuh agent · node_exporter.
 
+- fw-ips: runs Ubuntu 24.04 LTS (official Canonical AMI, x86_64).
 - fw-ips: its Elastic IP belongs to the `lab` stack and exists only during a session. Clients connect to `vpn.<domain>` (TTL 60), which `lab` updates on each apply.
 - app: pulls the Mailbridge image from ECR with its instance role, pinned by digest (`image@sha256:...`).
 - proxy: Certbot authenticates to Route 53 with its instance role; no stored DNS credentials.
@@ -138,7 +139,8 @@ Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 U
 ## 5. VPN (OpenVPN)
 
 - Own PKI with easy-rsa · **one certificate per device** · revocation via CRL
-- Per-client config (`client-config-dir`): user certs → 10.8.0.0/24, admin cert → 10.8.1.0/24
+- **Offline CA:** the CA and all signing stay on Marko's laptop, outside the repo, with the key passphrase-protected. fw-ips holds only `ca.crt`, its server cert and key, the CRL and the `tls-crypt` key. The encrypted CA key is backed up to SSM under `/vpn/`, which no instance role can read.
+- Per-client config (`client-config-dir`): user certs → dynamic pool in 10.8.0.0/24, admin cert → fixed address in 10.8.1.0/24. `ccd-exclusive` is off, so attribution of user IPs comes from OpenVPN connection logs in Wazuh
 - Hardening: `tls-crypt`, `data-ciphers AES-256-GCM`, `tls-version-min 1.3`, `crl-verify`, `user nobody`
 - Pushed: route to 10.0.2.0/24 (users) or + 10.0.5.0/24 (admins), DNS 10.0.1.10
 - Client profiles use `remote vpn.<domain> 1194 udp`, so they survive rebuilds
@@ -151,7 +153,7 @@ Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 U
 - Unbound on fw-ips (10.0.1.10): private record `mail.<domain> → 10.0.2.10`, forwards everything else to AmazonProvidedDNS (10.0.0.2). The name resolves only inside the VPN.
 - Certbot (`certbot-dns-route53`) obtains a Let's Encrypt cert via **DNS-01 challenge** using the proxy instance role — no public exposure and no stored API token. Nginx serves it; renewal via systemd timer.
 - **Staging certificates while building and rebuilding; switch to production certs once the setup is stable** (avoids Let's Encrypt rate limits).
-- DNS provider: **Route 53** public hosted zone in the `persistent` stack. The domain can be registered anywhere and is delegated by setting its NS records to the zone's name servers. Domain name: to be bought before task 1.2.
+- DNS provider: **Route 53** public hosted zone in the `persistent` stack. `<domain>` is a subdomain of a domain Marko already owns, delegated by adding NS records for that subdomain at the parent's DNS provider. The parent domain stays where it is, and the real name stays out of this public repo.
 - Public records: `_acme-challenge.mail.<domain>` (TXT, Certbot) and `vpn.<domain>` (A, TTL 60, written by `lab`). `mail.<domain>` is never public.
 - OAuth redirect `https://mail.<domain>/oauth/callback` works because the redirect happens in the browser, which is inside the tunnel.
 - Google/Microsoft OAuth apps stay in **testing mode, test accounts only**.
@@ -162,7 +164,7 @@ Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 U
 
 - SSM Parameter Store (SecureString): OAuth client secrets, DB password, token encryption key (`/mailbridge/*`)
 - Mailbox OAuth tokens encrypted in the DB by the app (key from Parameter Store)
-- One IAM role per instance: all → `AmazonSSMManagedInstanceCore`; app → read `/mailbridge/*` + pull from the Mailbridge ECR repository only; proxy → `route53:ListHostedZones`, `route53:GetChange`, and `route53:ChangeResourceRecordSets` on this zone limited to the `_acme-challenge` name; db → `s3:PutObject` on backup prefix only
+- One IAM role per instance: all → `mailbridge-lab-ssm-min` (`AmazonSSMManagedInstanceCore` without `ssm:GetParameter` and `ssm:GetParameters`, so no host reads a parameter unless granted); fw-ips → read `/vpn/fw-ips/*` only; app → read `/mailbridge/*` + pull from the Mailbridge ECR repository only; proxy → `route53:ListHostedZones`, `route53:GetChange`, and `route53:ChangeResourceRecordSets` on this zone limited to the `_acme-challenge` name; db → `s3:PutObject` on backup prefix only
 - No stored AWS keys on any instance: roles provide temporary credentials through IMDSv2
 - CloudTrail (management events) → S3 · GuardDuty free trial during testing
 - Terraform runs from the laptop with temporary `aws login` credentials; no access keys exist
@@ -213,7 +215,7 @@ For each: attack → detection (or miss) → custom rule/fix → re-test.
 ## 12. Cost control
 
 - AWS Budget alert at **$20** on day one
-- `terraform destroy` when not in use (stopped VMs still pay for disks + public IP)
+- `terraform destroy` when not in use (stopped VMs still pay for disks + public IP). Exception: during the fw-ips hand build, stop the instance and release the Elastic IP, until Ansible can rebuild it
 - Approx. compute ~$0.15/hour for the full set — a few hours per week stays within credits (verify in AWS Pricing Calculator)
 
 ---
@@ -239,7 +241,7 @@ Everything runs on AWS. There is no VPS phase, and no VPS is used anywhere in th
 secure-mailbridge-lab/
   terraform/
     modules/      network/ security/ compute/   (shared)
-    persistent/   created once, never destroyed: VPN CA + secrets, backup bucket, flow log bucket, state bucket, Route 53 zone, ECR repository, Budget
+    persistent/   created once, never destroyed: encrypted VPN CA backup + secrets, backup bucket, flow log bucket, state bucket, Route 53 zone, ECR repository, Budget
     lab/          VPC, subnets, SGs (free, kept between sessions) · VMs, Elastic IP, vpn.<domain> record (removed after every session) (uses modules/)
   ansible/        roles: fw_ips/ proxy/ app/ db/ siem/ mon/   (Ansible role names cannot contain hyphens; the host stays fw-ips)
   suricata-rules/ custom rules + test pcaps
