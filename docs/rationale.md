@@ -435,3 +435,39 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** Nothing in the lab validates DNSSEC, so Unbound trusts what 10.0.0.2 returns. Until production certs arrive in 2.6, `curl -k` skips the check that TLS would otherwise provide.
 
 **Verify once built.** From the VPN, `dig @10.0.1.10 example.com +short` returns addresses, and `sudo journalctl -u unbound` shows no new trust anchor failures.
+
+## 32. What Suricata can see (2026-11-01)
+
+**Problem.** §11 tested SQLi and XSS against "WAF + Suricata", but VPN traffic to the proxy is TLS that ends at Nginx, past fw-ips. On `tun0`, Suricata sees addresses, ports, TLS details and traffic patterns, not web payloads.
+
+**Options.** A: change §11, so ModSecurity handles web attacks and Suricata handles network behaviour. B: decrypt on fw-ips. C: add a sensor between proxy and app.
+
+**Chosen: A.** It describes how the design really works. B puts private keys on the most exposed host, against the reasoning behind decision 21. C adds a component Tier 1 doesn't have.
+
+**Trade-off accepted.** Suricata can't catch an attack inside TLS, so web detection depends on one layer, ModSecurity.
+
+**Verify once built.** A SQLi test appears in the ModSecurity audit log and not as a payload alert in `eve.json`, while a scan raises Suricata events.
+
+## 33. Suricata fails closed (2026-11-01)
+
+**Problem.** NFQUEUE needs a decision when Suricata isn't running: drop queued traffic or let it through.
+
+**Options.** A: plain `queue`, which drops. B: `queue bypass`, which passes traffic unscanned.
+
+**Chosen: A.** Stopping the IPS shouldn't open an unscanned path. VPN and SSM use `input` and `output`, which aren't queued, so recovery stays possible.
+
+**Trade-off accepted.** A Suricata crash cuts VPN traffic to the proxy and `mgmt`, including during upgrades.
+
+**Verify once built.** With Suricata stopped, forwarded VPN traffic stops, and the VPN and SSM stay up.
+
+## 34. Suricata package, rules and logging (2026-11-01)
+
+**Problem.** Suricata needs a source, a ruleset and a log volume that suit a t3.small with 2 GB of RAM and a 20 GB disk.
+
+**Options.** A: Ubuntu's package, ET Open alert only, and limited rotated logs. B: the OISF PPA, no rules until 1.12, all event types. C: ET Open with drop enabled.
+
+**Chosen: A.** Ubuntu's package needs no extra trusted source. ET Open gives broad detection, and alert-only keeps false positives from cutting traffic, leaving drops to the custom rules in 1.12.
+
+**Trade-off accepted.** The package is older than upstream, and ET Open uses more memory, which must be measured on this host. ET Open alerts don't block anything.
+
+**Verify once built.** `suricata -T` passes, `free -m` shows spare memory after loading, and `eve.json` shows only the chosen event types.
