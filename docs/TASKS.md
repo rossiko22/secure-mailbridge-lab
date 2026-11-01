@@ -13,7 +13,7 @@ it is verified, and the relevant doc section is updated.
 ## Current position
 
 - **Phase:** 1, Tier 1 on AWS (0.6 and 0.7 still open)
-- **Next task:** 1.10 (Unbound and the VPN DNS route). 1.6, 1.7b, 1.8, 1.9a and 1.9b are hand-verified; their code is still to do.
+- **Next task:** 1.11 (Suricata install and NFQUEUE wiring). 1.6, 1.7b, 1.8, 1.9a, 1.9b and 1.10 are hand-verified; their code is still to do.
 
 ## Open items
 
@@ -87,7 +87,7 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 - [x] **1.9b** Core nftables ruleset: full §4 policy on top of 1.9a · **C** (Marko explicitly asked Claude to write this one)
   - Note: verified by hand, including a reboot. No proxy exists yet, so 443 was shown as not dropped; a working connection is proved in 1.15. The role tasks that install the files are still to do.
   - Verify: `nft list ruleset`; user pool reaches only 10.0.2.10:443, other traffic is dropped and logged; SSM still `Online`
-- [ ] **1.10** `fw_ips` role: Unbound with the private `mail.<domain>` record; push a route to 10.0.1.10/32 to VPN clients (decision 27) · C
+- [~] **1.10** Hand build verified for admin and user pools; the `fw_ips` role part is still to do, and a reboot test of Unbound is pending. `fw_ips` role: Unbound with the private `mail.<domain>` record; push a route to 10.0.1.10/32 to VPN clients (decision 27) · C
   - Verify: `dig @10.0.1.10 mail.<domain> +short` from the VPN returns 10.0.2.10
 - [ ] **1.11** `fw_ips` role: Suricata install, NFQUEUE wiring, `eve.json` · C
   - Verify: `suricata -T` passes; `sudo tail -f eve.json` shows flows while using the VPN
@@ -123,7 +123,7 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
 Targets: own deployment only, never Google/Microsoft APIs. Each one follows attack → detection or miss → rule/fix → re-test.
 
 - [ ] **2.1** Outside: scan, then SQLi/XSS/brute force during a 443 window · M
-- [ ] **2.2** Inside: stolen VPN cert: reachability, visibility, time to revoke via CRL · M
+- [ ] **2.2** Inside: stolen VPN cert: reachability, visibility, time to revoke via CRL; include private hosts querying 10.0.0.2 directly (decision 30) · M
 - [ ] **2.3** Malicious email: HTML/JS payload, sanitising, CSP · M
 - [ ] **2.4** Access control: user A reading user B's mailbox by changing IDs · M
 - [ ] **2.5** Complete `findings-report.md`; TCP 443 confirmed closed again · M
