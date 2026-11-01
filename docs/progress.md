@@ -25,3 +25,9 @@ Update at the end of every session: what was done, what's verified, next step.
 - Decided: keep the hand-built network; rebuild test deferred to 1.20 (decision 16).
 - Done: six CI checks added with actions pinned by commit; documented checkov skips (decision 17); all work merged to main through PR 1 on green CI; branch protection on main requires all six checks.
 - Next: fw-ips (task 1.6). Use `-no-color` when grepping Terraform output. NACLs (rest of 1.4) and CI (0.5) still open; the stacked branches wait for CI.
+- Verified: all enabled regions have no instances, disks, snapshots, public IPs, NAT Gateways or load balancers; October spend so far is about $1.09 before credits, mostly earlier EC2 use.
+- Discussed: the fw-ips plan and SSM versus SSH over the VPN. Open decisions are listed in TASKS.md; nothing was changed.
+- Next: `Read START.md`, settle the open items for 1.6, then build fw-ips, starting with the IAM role.
+
+## 2026-11-01
+- Verified: 1.3 and 1.4 closed. No NAT Gateway, ALB or endpoint resource exists in the code; checkov is green on main; every Tier 1 security group and NACL rule matches §4 line by line. `terraform plan` was not re-run (session expired); the last clean plan predates only comment-level changes to the Terraform code.

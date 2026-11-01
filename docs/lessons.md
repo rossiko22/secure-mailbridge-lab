@@ -127,6 +127,22 @@ Actions are pinned by **commit SHA** rather than a tag. A tag can be moved to di
 
 A **false positive** is a warning about something that isn't really wrong. The right response is a narrow skip with a written reason, next to the resource. Turning a check off everywhere would hide real problems later.
 
+### Part 10: What costs money in AWS
+
+Most networking building blocks are free: VPCs, subnets, route tables, internet gateways, security groups, NACLs and unattached ENIs. Costs come from things that run or hold capacity: instances, disks, public IPv4 addresses, NAT Gateways and load balancers.
+
+Stopping an instance ends the compute charge, but its disk still bills. A terminated instance can leave disks, snapshots or IPs behind. That's why we scanned every region for those, not just for instances. The scan found none, so your earlier EC2 spending has stopped.
+
+### Part 11: Logging in without SSH
+
+**Session Manager** gives you a terminal with no inbound port. The SSM agent on the VM connects outbound to AWS, and your session travels through that connection. Two identities are involved: the **instance role** lets the VM register with SSM, and **your AWS login with MFA** decides whether you may connect. Don't mix them up: the role is for the machine, not for you.
+
+You asked whether SSH over the VPN would be better. It's a sound idea and doesn't expose port 22 to the internet, but it adds to SSM rather than replacing it. The key concept is **out-of-band access**: a way in that doesn't depend on the thing you might break. fw-ips runs the VPN, so a mistake there would also take down SSH over the VPN, while SSM takes a separate path. Also, SSH over VPN only works from a device holding your profile and key, so it isn't truly "from anywhere".
+
+### Part 12: The plan for fw-ips
+
+fw-ips will use your existing ENI, so its address, security group and routes are already in place. Attaching an instance turns the `blackhole` routes `active`. The configuration order is PKI, OpenVPN, IP forwarding and NAT, the full nftables policy, Unbound, then Suricata. Each step depends on the last and gets tested before moving on.
+
 ### Mistakes and what they taught
 
 | What happened | The lesson |
@@ -168,7 +184,11 @@ The full reasoning is in `rationale.md`.
 9. What does `terraform import` change in AWS?
 10. Why isn't `No changes` the same as proving a rebuild works?
 11. Why use temporary credentials rather than access keys?
+12. How can Session Manager work with no inbound port?
+13. What's the difference between an instance role and your own login?
+14. Why keep out-of-band access if you also have SSH over a VPN?
+15. What does stopping an instance save, and what still bills?
 
 ### What comes next
 
-Task 1.6 builds fw-ips, your first EC2 instance. It turns the `blackhole` routes `active`, and running costs begin there. Then come OpenVPN and the NAT rules you'll write yourself.
+Task 1.6 builds fw-ips, your first EC2 instance. Running costs begin there. Before launch, decide what happens to the instance between sessions. Then come OpenVPN and the NAT rules you'll write yourself.
