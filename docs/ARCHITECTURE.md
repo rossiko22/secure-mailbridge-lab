@@ -127,12 +127,13 @@ Second layer: Network ACLs per subnet mirroring the same flows. Third layer: nft
 
 Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 UDP 53 and 140 TCP 53 to 10.0.1.10/32. Agents: TCP 1514–1515 to 10.0.5.0/24. A 443 test window also needs inbound TCP 443 and outbound TCP eph to 0.0.0.0/0 on public.
 
-**nftables on fw-ips (core rules):**
+**nftables on fw-ips (core rules):** fw-ips has one interface, so rules separate internet from VPC traffic by address. NAT applies only to private subnets going to non-VPC addresses, never to VPN pools.
 - `tun0` user pool (10.8.0.0/24) → only `10.0.2.10:443`
 - `tun0` admin pool (10.8.1.0/24) → proxy:443 + mgmt subnet
 - private subnets → internet: TCP 443 (+ DNS via Unbound, NTP) only, logged
+- to fw-ips itself: UDP 1194, DHCP replies, DNS to 10.0.1.10 from private subnets and VPN pools, ping from the admin pool only; `output` stays open
 - everything else: drop + log → Wazuh
-- forwarded `tun0` traffic → NFQUEUE → Suricata (inline, can drop)
+- forwarded `tun0` traffic → NFQUEUE → Suricata (inline, can drop), in a separate chain after the firewall rules
 
 ---
 
@@ -142,7 +143,7 @@ Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 U
 - **Offline CA:** the CA and all signing stay on Marko's laptop, outside the repo, with the key passphrase-protected. fw-ips holds only `ca.crt`, its server cert and key, the CRL and the `tls-crypt` key. The encrypted CA key is backed up to SSM under `/vpn/`, which no instance role can read.
 - Per-client config (`client-config-dir`): user certs → dynamic pool in 10.8.0.0/24, admin cert → fixed address in 10.8.1.0/24. `ccd-exclusive` is off, so attribution of user IPs comes from OpenVPN connection logs in Wazuh
 - Hardening: `tls-crypt`, `data-ciphers AES-256-GCM`, `tls-version-min 1.3`, `crl-verify`, `user nobody`
-- Pushed: route to 10.0.2.0/24 (users) or + 10.0.5.0/24 (admins), DNS 10.0.1.10
+- Pushed: routes to 10.0.2.0/24 and 10.0.1.10/32 (users) or + 10.0.5.0/24 (admins), DNS 10.0.1.10
 - Client profiles use `remote vpn.<domain> 1194 udp`, so they survive rebuilds
 - Client: `sudo openvpn --config marko-laptop.ovpn` → `https://mail.<domain>`
 

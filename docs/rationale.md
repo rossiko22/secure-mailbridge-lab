@@ -351,3 +351,51 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** The disk bills about $2 a month while stopped. Each session starts by allocating a new address and updating the record, and until then the `vpn` record points at an address AWS may give to someone else. Clients would still refuse it, because `verify-x509-name` and `tls-crypt` fail.
 
 **Verify once built.** After stopping, `aws ec2 describe-addresses` returns nothing and the instance state is `stopped`.
+
+## 25. Forwarding and NAT on a single interface (2026-11-01)
+
+**Problem.** fw-ips has one ENI, so internet and VPC traffic both enter and leave on `ens5`. Interface matches can't tell them apart. VPN pools must also stay un-NATed, because §2 needs the real client address on every event.
+
+**Options.** A: match on addresses and `snat` private subnets to 10.0.1.10. B: `masquerade` everything in `10.0.0.0/16`. C: add a second ENI to separate the traffic.
+
+**Chosen: A.** The rules match private sources and non-VPC destinations, on TCP 443 and UDP 123 as §4 allows. `snat` suits a fixed address, and the internet gateway maps it to the session's Elastic IP, so the rule survives address changes. `send_redirects` is off, because Linux would otherwise tell senders to bypass the firewall. C costs nothing extra but adds a subnet design change for no Tier 1 benefit.
+
+**Trade-off accepted.** 10.0.1.10 and `ens5` are hardcoded in `define` lines. Until 1.9b, there is no `input` chain, so `sg-fw` alone protects fw-ips itself. Drop logs are rate limited, so a flood can lose entries.
+
+**Verify once built.** `sudo nft list ruleset` shows both chains; a private test host shows `Online` in SSM; `FW-EGRESS` entries appear in the journal.
+
+## 26. NFQUEUE in a separate chain (2026-11-01)
+
+**Problem.** Suricata (1.11) must see every packet in a flow. A queue rule after the `established` accept would see only the first packets, and a packet Suricata accepts skips the rest of its chain, so a queue rule before the policy rules could bypass them.
+
+**Options.** A: a separate base chain at a later priority. B: queue at the top of the policy chain. C: queue after the `established` accept.
+
+**Chosen: A.** Packets pass the firewall first, and only allowed traffic reaches Suricata. The 1.9a ruleset needs no rewrite.
+
+**Trade-off accepted.** There are two forward chains to reason about, and the order depends on their priorities. What happens if Suricata stops is still to be decided in 1.11.
+
+**Verify once built.** `suricata -T` passes, and `eve.json` shows a full `tun0` flow, not just its first packets, while dropped traffic never reaches it.
+
+## 27. VPN clients reach Unbound (2026-11-01)
+
+**Problem.** Clients are pushed DNS 10.0.1.10, but the pushed routes cover only `10.0.2.0/24` and `10.0.5.0/24`, and §4 had no rule allowing the VPN pools to reach Unbound. `mail.<domain>` could not resolve over the VPN.
+
+**Options.** A: allow port 53 from the pools to 10.0.1.10 and push a /32 route. B: move DNS to the tunnel address 10.8.0.1. C: leave it blocked.
+
+**Chosen: A.** §5 and §6 keep one DNS address, and 1.10's check stays the same. A /32 route exposes no other host in the public subnet. B depends on `tun0` existing when Unbound starts. C breaks the app.
+
+**Trade-off accepted.** A stolen user cert can now query Unbound, which adds a DNS path alongside the proxy. Forwarded traffic is still limited to the proxy on 443.
+
+**Verify once built.** From the VPN, `dig @10.0.1.10 mail.<domain> +short` returns 10.0.2.10.
+
+## 28. Input policy on fw-ips (2026-11-01)
+
+**Problem.** §4 covers forwarded traffic but says little about fw-ips itself, the highest-risk host. The input rules must protect it without breaking the VPN, SSM or its own network settings.
+
+**Options.** A: `input` drops by default, `output` stays open, ping for admins only, load-tested from a separate file. B: also restrict `output` now. C: leave `input` open and rely on `sg-fw`.
+
+**Chosen: A.** `sg-fw` doesn't filter VPN clients, because their traffic arrives on `tun0` after decryption, so C would leave services exposed to them. DHCP replies are allowed so the lease renews. B risks breaking SSM, apt and DNS, which all start from fw-ips.
+
+**Trade-off accepted.** A compromised fw-ips can send traffic anywhere. Restricting `output` is left as possible later hardening.
+
+**Verify once built.** After loading, the VPN, SSM and `ping 10.8.0.1` still work, and a test to a closed port on fw-ips logs `FW-INPUT-DROP`.
