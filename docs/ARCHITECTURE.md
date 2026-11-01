@@ -204,7 +204,7 @@ Jest + Supertest (API) · Playwright (UI) · k6 (load) · Trivy (image scan) · 
 
 | Position | Tests |
 |---|---|
-| Outside (internet) | Scan: only UDP 1194 should respond. During 443 window: SQLi/XSS/brute force vs ModSecurity; Suricata sees scans and TLS metadata, not payloads, because TLS ends at Nginx |
+| Outside (internet) | Scan: only UDP 1194 should respond. During 443 window: SQLi/XSS/brute force vs ModSecurity; Suricata sees only traffic the firewall allowed, so TLS metadata and behaviour, not payloads, because TLS ends at Nginx. Scans of blocked ports appear as nftables drops |
 | Inside (stolen VPN cert) | What's reachable? What does Suricata/Wazuh see? Time to revoke via CRL? |
 | Malicious email | HTML/JS payload in an incoming email → is it sanitized? CSP? |
 | Access control | Can user A read user B's mailbox by changing IDs? |

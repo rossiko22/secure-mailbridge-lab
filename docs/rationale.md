@@ -446,7 +446,7 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 
 **Trade-off accepted.** Suricata can't catch an attack inside TLS, so web detection depends on one layer, ModSecurity.
 
-**Verify once built.** A SQLi test appears in the ModSecurity audit log and not as a payload alert in `eve.json`, while a scan raises Suricata events.
+**Verify once built.** A SQLi test appears in the ModSecurity audit log and not as a payload alert in `eve.json`. A scan of blocked ports appears as `FW-DROP` and not in `eve.json`, because the firewall drops it before the queue.
 
 ## 33. Suricata fails closed (2026-11-01)
 
@@ -471,3 +471,15 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** The package is older than upstream, and ET Open uses more memory, which must be measured on this host. ET Open alerts don't block anything.
 
 **Verify once built.** `suricata -T` passes, `free -m` shows spare memory after loading, and `eve.json` shows only the chosen event types.
+
+## 35. Custom Suricata rules (2026-11-01)
+
+**Problem.** Task 1.12 needs custom rules, including inline blocking, but no proxy exists yet, so no real TLS can be captured. The rules see only allowed traffic, as metadata and behaviour.
+
+**Options.** A: one `drop` rule for floods, the rest `alert`, with synthetic captures. B: all rules `drop`. C: no `drop`, or wait for the proxy.
+
+**Chosen: A.** Rule mistakes can't block real traffic. This mattered at once: the first version of the protocol rule fired on clean TLS, and the clean capture caught it. Using `app-layer-protocol:failed` fixed that, and plain HTTP needed its own rule, because Suricata recognises it. The flood threshold of 60 in 10 seconds is well above what a browser opens.
+
+**Trade-off accepted.** Synthetic captures can't prove behaviour against real TLS, so 1.15 re-tests them. A rule on the server name doesn't fire when a client sends no name. The threshold is a first guess, to tune in 2.2.
+
+**Verify once built.** Each capture raises only its intended rule, `clean-tls.pcap` raises nothing, and a live flood raises `ips.blocked` in `stats.log`.

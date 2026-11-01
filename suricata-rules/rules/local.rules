@@ -1,0 +1,24 @@
+# Custom Suricata rules, task 1.12.
+# Written by Claude at Marko's explicit request.
+# Only traffic the firewall allowed reaches these rules. TLS ends at Nginx,
+# so they see TLS metadata and behaviour, not web payloads.
+
+# Traffic on the only port VPN users may reach that isn't any known protocol.
+# Could be a tunnel. "failed" waits for protocol detection to finish. "!tls"
+# also fired on normal TLS, on packets sent before detection finished.
+alert tcp 10.8.0.0/23 any -> 10.0.2.10 443 (msg:"MAILBRIDGE unidentified protocol on proxy 443"; flow:established,to_server; app-layer-protocol:failed; classtype:policy-violation; sid:1000001; rev:1;)
+
+# Plain HTTP on 443. Detection succeeds here, so the rule above doesn't match.
+alert http 10.8.0.0/23 any -> 10.0.2.10 443 (msg:"MAILBRIDGE plain HTTP on proxy 443"; flow:established,to_server; classtype:policy-violation; sid:1000005; rev:1;)
+
+# TLS 1.0 client. A current browser doesn't offer this, so it suggests a
+# scanner or a downgrade attempt.
+alert tls 10.8.0.0/23 any -> 10.0.2.10 443 (msg:"MAILBRIDGE TLS 1.0 client to proxy"; flow:established,to_server; tls.version:1.0; classtype:policy-violation; sid:1000002; rev:1;)
+
+# Server name other than mail.<domain>. Only the prefix is matched, so the
+# real domain stays out of this public repo.
+alert tls 10.8.0.0/23 any -> 10.0.2.10 443 (msg:"MAILBRIDGE unexpected TLS server name"; flow:established,to_server; tls.sni; content:!"mail."; startswith; classtype:policy-violation; sid:1000003; rev:1;)
+
+# Connection flood from one client. The only rule that blocks: a first
+# threshold, to tune in scenario 2.2.
+drop tcp 10.8.0.0/23 any -> 10.0.2.10 443 (msg:"MAILBRIDGE connection flood to proxy"; flags:S; detection_filter:track by_src, count 60, seconds 10; classtype:attempted-dos; sid:1000004; rev:1;)

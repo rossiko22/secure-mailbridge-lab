@@ -13,7 +13,7 @@ it is verified, and the relevant doc section is updated.
 ## Current position
 
 - **Phase:** 1, Tier 1 on AWS (0.6 and 0.7 still open)
-- **Next task:** 1.12 (custom Suricata rules, written by Marko). 1.6, 1.7b, 1.8, 1.9a, 1.9b, 1.10 and 1.11 are hand-verified; their code is still to do.
+- **Next task:** 1.6 and the `fw_ips` role, turning the hand build into code. 1.6, 1.7b, 1.8, 1.9a, 1.9b, 1.10, 1.11 and 1.12 are hand-verified; their code is still to do.
 
 ## Open items
 
@@ -91,7 +91,8 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
   - Verify: `dig @10.0.1.10 mail.<domain> +short` from the VPN returns 10.0.2.10
 - [~] **1.11** Hand build verified, including fail-closed and a reboot, using 528 MB of RAM with ET Open; the `fw_ips` role part is still to do. `fw_ips` role: Suricata install, NFQUEUE wiring, `eve.json` · C
   - Verify: `suricata -T` passes; `sudo tail -f eve.json` shows flows while using the VPN
-- [ ] **1.12** Custom Suricata rules and test pcaps · **M**
+- [x] **1.12** Custom Suricata rules and test pcaps · **C** (Marko explicitly asked Claude to write these)
+  - Note: captures are synthetic, so re-test rules against real TLS in 1.15, then consider promoting them to `drop`. `suricatasc reload-rules` was refused once, cause unknown, so a restart loaded them.
   - Verify: `suricata -r <pcap> -S <rules>` raises the expected alert; live traffic is dropped inline
 
 **db, app, proxy**
