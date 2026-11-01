@@ -18,6 +18,10 @@ it is verified, and the relevant doc section is updated.
 ## Open items
 
 - [ ] **Buy the domain** and set its NS records to the Route 53 zone. Needed for 1.2.
+- [ ] **fw-ips operating system:** proposed Ubuntu 24.04 LTS; `ARCHITECTURE.md` does not set one. Needed for 1.6.
+- [ ] **Between sessions:** proposed stop the instance and release the Elastic IP during the hand build, because terminating deletes hand-made config and CA keys. Needed for 1.6.
+- [ ] **Package mirrors:** the public NACL allows outbound 443 only, and default Ubuntu mirrors commonly use port 80. Test straight after launch; try HTTPS mirrors first.
+- [ ] **SSH over the VPN:** proposed as a daily-use path from the admin pool, with SSM kept for emergencies. Discuss after 1.9b; no design change yet.
 - [ ] **Mailbridge repo location:** where the source lives, so the image can be built and pushed to ECR. Needed for 1.14.
 
 ---
@@ -54,10 +58,10 @@ Order follows ARCHITECTURE.md §13: network → fw-ips (OpenVPN, then NAT) → d
   - Verify: Marko reviews `terraform plan` before any apply; no secret values in the repo or in plan output
 
 **Network (free resources)**
-- [~] **1.3** `modules/network`: VPC, 5 subnets, routes, IGW, standalone fw-ips ENI, flow logs · C
+- [x] **1.3** `modules/network`: VPC, 5 subnets, routes, IGW, standalone fw-ips ENI, flow logs · C
   - Note: private routes show as `blackhole` until fw-ips attaches; the S3 endpoint moved to T2.3
   - Verify: plan shows no NAT Gateway, ALB or interface endpoint
-- [~] **1.4** `modules/security`: security groups and NACLs from §4 · C
+- [x] **1.4** `modules/security`: security groups and NACLs from §4 · C
   - Verify: `checkov` passes; line-by-line review against the §4 table
 - [x] **1.5a** Hand-build the network, security groups and flow logs in the console, without reading the modules · M
   - Verify: `aws ec2 describe-subnets` shows the 5 CIDRs from §2; `aws ec2 describe-flow-logs` shows `ACTIVE`
