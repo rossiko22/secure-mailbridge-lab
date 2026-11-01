@@ -19,6 +19,8 @@ it is verified, and the relevant doc section is updated.
 
 - [~] **Delegate the subdomain:** zone and NS records built by hand and verified with `dig`, parent MX unchanged. Import the zone in 1.2.
 - [ ] **Each session during the fw-ips hand build:** start by allocating an Elastic IP, associating it with the ENI, starting fw-ips and updating the `vpn` record; end by stopping fw-ips and releasing the Elastic IP (decision 24).
+- [ ] **Ansible over SSM:** decide how Ansible connects to hosts with no SSH. Needed before the `fw_ips` role.
+- [ ] **Suricata upkeep:** schedule `suricata-update`, and find out why `reload-rules` was refused once. Do both in the `fw_ips` role.
 - [ ] **Own package mirror or proxy:** Marko wants to discuss this later. Parked until Tier 1 is finished; no design change yet.
 - [ ] **SSH over the VPN:** proposed as a daily-use path from the admin pool, with SSM kept for emergencies. Discuss after 1.9b; no design change yet.
 - [ ] **Mailbridge repo location:** where the source lives, so the image can be built and pushed to ECR. Needed for 1.14.

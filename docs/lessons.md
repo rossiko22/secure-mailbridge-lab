@@ -318,3 +318,115 @@ Full reasoning is in `rationale.md`, entries 18 to 24.
 ### What comes next
 
 You write the 1.9a ruleset: forwarding and NAT for private subnets, with a forward chain that drops by default. Once it's reviewed, a small temporary private VM proves that SSM works through fw-ips. Each session now starts by giving fw-ips a new Elastic IP and updating the `vpn` record.
+
+### Evening session: from a VPN server to a working security gateway
+
+This morning fw-ips could only accept VPN connections. By tonight it routes traffic, enforces the §4 policy, answers private DNS and inspects traffic inline. Nothing else in the lab exists yet, so every later host inherits what you built here.
+
+A note on authorship: `CLAUDE.md` says you write the nftables and Suricata rules. Tonight you explicitly asked me to write them. That was your call, but it raises the bar for you: you must still be able to defend each line, so reread both files slowly with this section beside you.
+
+### Part 9: One interface changes everything
+
+fw-ips has one ENI, so internet and VPC traffic both enter and leave on `ens5`. A rule saying "output interface is the internet" would also match traffic to the VPC, so the rules match on addresses instead. This shape is called a **router on a stick**.
+
+It also explains `send_redirects = 0`. When a packet leaves by the interface it came in on, Linux assumes the sender could go direct and tells it so. On a firewall, that advice means "bypass me". The kernel combines the `all` setting and the interface setting with OR, so both must be 0.
+
+### Part 10: Two NATs and a preserved address
+
+`snat ip to 10.0.1.10` rewrites private sources, and the internet gateway then maps that address to the Elastic IP. Because the gateway does the second step, the Elastic IP can change each session with no firewall change. `masquerade` looks up the address on each new connection, which suits addresses that change; ours doesn't.
+
+NAT applies only to private subnets going to non-VPC addresses. VPN pools are never NATed, and your `FW-DROP` lines proved it, showing `SRC=10.8.1.10`. Without that, every event would look like it came from fw-ips, and scenario 2.2 couldn't attribute anything.
+
+### Part 11: Stateful rules and the three chains
+
+`ct state established,related accept` is why only new connections need rules. `input` handles traffic for fw-ips itself, `forward` handles traffic passing through, and `output` stays open because §4 doesn't define it and SSM, apt and DNS all start from fw-ips.
+
+Two details are easy to miss. `sg-fw` doesn't filter VPN clients, because their traffic arrives on `tun0` after decryption, so `input` is the only protection there. And matching `tun0` as well as the source address means a forged `10.8.x.x` packet on `ens5` fits no rule.
+
+The test where you added a route to `mgmt` by hand matters most. A missing route isn't protection, because a client controls its own routes. Only the firewall stopped it.
+
+### Part 12: Safe changes to a firewall
+
+An `input` drop can lock you out, so we loaded a test file by hand and only then replaced `/etc/nftables.conf`. If it had gone wrong, a stop and start would have restored the last good rules. `nft -f` is also atomic, so a bad file changes nothing. Then a reboot tested what a live load can't: boot order, `iifname` matching a `tun0` that doesn't exist yet, and DHCP under the new policy.
+
+### Part 13: DNS, and a conclusion I got wrong
+
+Unbound answers `mail.<domain>` from a `static` zone for that exact name, so the `vpn` record and `_acme-challenge` still resolve publicly. A zone covering the whole domain would have broken DNS-01.
+
+Clients were pushed DNS 10.0.1.10 with no route to it, which is why `aws` hung with the VPN up. A pushed /32 fixed that without exposing anything else in the public subnet.
+
+Then forwarded names returned `SERVFAIL`. I tested with `+cd`, it still failed, and I told you it wasn't DNSSEC. The Unbound log proved me wrong: `failed to prime trust anchor`. AWS's resolver returned no `RRSIG` records, so validation failed for everything. We turned it off with `module-config: "iterator"`. The argument you can defend is that the path to 10.0.0.2 stays inside AWS, and TLS stops a forged address being trusted. Until production certs arrive, `curl -k` removes that protection.
+
+The known gap: security groups and NACLs don't filter AmazonProvidedDNS, so a compromised private host can query it directly. Changing DHCP wouldn't fix that, because a host can still ask 10.0.0.2. Scenario 2.2 will test it. Also keep the wider point in mind: TCP 443 to anywhere is an easier way out than DNS.
+
+### Part 14: Suricata inline
+
+A rule accepted by Suricata skips the rest of its chain, so the `ips` chain sits at `priority filter + 10`, after the firewall. Your port 22 test proved the order: the firewall dropped it, and it never reached `eve.json`.
+
+The packaged service runs `--af-packet`, which only listens, and `/etc/default/suricata` looks right but isn't read by the service. An empty `ExecStart=` in a drop-in clears the packaged command. Read what actually runs, not what a config file implies.
+
+Plain `queue`, without `bypass`, fails closed. `tcpdump` showed 2 SYNs with Suricata running and 0 with it stopped, while the VPN and SSM stayed up, because `input` and `output` aren't queued. The cost is a gap of about 35 seconds at each start.
+
+Two design truths came out of this, and the first changed §11. TLS ends at Nginx, so Suricata can't see web payloads; only ModSecurity can. And anything the firewall drops never reaches Suricata, so scans of blocked ports appear as `FW-DROP`. I said Suricata would handle scans, and your own test showed that was wrong.
+
+### Part 15: Rules, and why a clean capture matters
+
+Five rules were written, and only the flood rule drops. The clean capture caught a real bug: `app-layer-protocol:!tls` fired on normal TLS, because it matched packets sent before detection finished. In production it would have alerted on every connection. `failed` waits for detection, but plain HTTP is a recognised protocol, so it needed its own rule.
+
+A rule test needs a case that should not fire. Without `clean-tls.pcap`, that rule would have looked perfect.
+
+The live result was exact: 80 attempts gave `ips.accepted` 60 and `ips.blocked` 20.
+
+### Mistakes from tonight and what they taught
+
+| What happened | The lesson |
+|---|---|
+| The test VM launched with the fw-ips role | Check the identity field on the launch page; CloudTrail proved no parameters were read |
+| Docs said B would close the DNS gap | A DHCP option only changes a default, not what a host can do |
+| I said `+cd` ruled out DNSSEC | One test isn't proof; read the service's own log |
+| I said Suricata would handle scans | Your test disproved it, so trust evidence over the plan |
+| `!tls` fired on clean TLS | Always test a case that should not match |
+| A long `base64` line was mangled | Terminals corrupt long pastes; a checksum shows it, and SSM `send-command` avoids it |
+| nano showed a blank file | Exit without saving; a display fault could have wiped the config, and `sed` avoided the problem |
+| Descriptions got pasted with commands | Copy only the command block |
+| An empty `grep` looked like a failure | Flow records appear late; read the counters instead of waiting |
+| `reload-rules` was refused | Still unexplained; say so instead of inventing a cause |
+
+### Decisions from tonight
+
+Full reasoning is in `rationale.md`, entries 25 to 35.
+
+| Topic | Choice | Why |
+|---|---|---|
+| Forwarding | Match addresses, `snat` | One interface, fixed address |
+| Suricata position | Separate later chain | Firewall rules stay in force |
+| VPN DNS | Pushed /32 route | Name resolves, nothing else exposed |
+| fw-ips input | Default drop, open output | Protects the host without breaking SSM |
+| Private host DNS | Keep AWS resolver | Recorded gap, tested in 2.2 |
+| DNSSEC | Off in Unbound | AWS returns no signatures |
+| Web payloads | ModSecurity only | TLS ends at Nginx |
+| Suricata failure | Fail closed | Can't be stopped to avoid it |
+| Custom rules | Only the flood rule drops | A wrong match can't block real traffic |
+
+### Interview questions to practise
+
+1. Why can't interface matching separate internet from VPC traffic on fw-ips?
+2. Why must `send_redirects` be off on a one-interface firewall, and why set it in three places?
+3. When would you choose `snat` over `masquerade`?
+4. Why doesn't changing the Elastic IP require a firewall change?
+5. Why doesn't `sg-fw` protect fw-ips from a VPN client?
+6. Why isn't a missing route a security control?
+7. Why load a firewall from a test file before making it permanent?
+8. What does `iifname` allow that `iif` doesn't at boot?
+9. What's the difference between `static` and `transparent` local zones?
+10. Why did DNSSEC validation fail, and what stops a forged answer now?
+11. Why doesn't pointing DHCP at Unbound close the DNS gap?
+12. Why does a separate chain matter for NFQUEUE?
+13. What does fail-closed cost, and why was it acceptable here?
+14. Why can't Suricata see a SQL injection in this design?
+15. Why did `!tls` fire on clean traffic?
+16. Why does a test suite need cases that must not match?
+
+### What comes next
+
+fw-ips is finished by hand but exists only on one disk. Next, decide how Ansible connects over SSM, write the `fw_ips` role part by part, write 1.6, and rebuild fw-ips from code. Only then start `db`.
