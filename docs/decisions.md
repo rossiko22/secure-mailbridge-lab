@@ -36,3 +36,7 @@ Format: date · decision · why
 - 2026-11-01 · VPN clients may reach Unbound on 10.0.1.10, with a pushed /32 route added in 1.10 · `mail.<domain>` can't resolve otherwise, and users still reach only the proxy through the firewall
 - 2026-11-01 · fw-ips answers ping from the admin pool only, and its `output` chain stays open · the session check keeps working without helping a stolen user cert map the host, and §4 defines no outbound policy for fw-ips
 - 2026-11-01 · A new nftables input policy is load-tested from a separate file before replacing `/etc/nftables.conf` · an `input` drop can lock out the host, and a stop and start restores the last good rules
+- 2026-11-01 · Unbound listens on 10.0.1.10 only, with a `static` local zone for `mail.<domain>` and query logging off · other names under the domain must still resolve, access stays limited by address, and §8 doesn't list DNS logs
+- 2026-11-01 · The real domain reaches Ansible through an untracked vars file · the repo is public and the name isn't a secret, so an SSM read and IAM grant aren't justified
+- 2026-11-01 · Private hosts keep AmazonProvidedDNS, recorded as a known gap for scenario 2.2 · a DHCP change would not stop direct queries to 10.0.0.2, and it would make fw-ips depend on its own Unbound
+- 2026-11-01 · Unbound doesn't validate DNSSEC · AmazonProvidedDNS returns no signatures, so validation fails every forwarded name, and TLS still stops a forged address being trusted

@@ -1,0 +1,35 @@
+# Unbound on fw-ips, task 1.10. Installed to /etc/unbound/unbound.conf.d/.
+# {{ domain }} comes from an untracked vars file, so the real name stays out
+# of this public repo.
+
+server:
+    # Listen on the VPC address only. ip-freebind lets Unbound start even if
+    # the address isn't configured yet at boot.
+    interface: 10.0.1.10
+    ip-freebind: yes
+    do-ip6: no
+
+    # Anything not listed here is refused, on top of the nftables rules.
+    access-control: 10.0.2.0/24 allow
+    access-control: 10.0.3.0/24 allow
+    access-control: 10.0.4.0/24 allow
+    access-control: 10.0.5.0/24 allow
+    access-control: 10.8.0.0/23 allow
+
+    # Don't tell clients which software or version this is.
+    hide-identity: yes
+    hide-version: yes
+
+    # No DNSSEC validation: AmazonProvidedDNS strips the signatures, so the
+    # validator would fail every forwarded name.
+    module-config: "iterator"
+
+    # Answer this exact name locally. Other names under the domain, such as
+    # the vpn record and _acme-challenge, still resolve publicly.
+    local-zone: "mail.{{ domain }}." static
+    local-data: "mail.{{ domain }}. 60 IN A 10.0.2.10"
+
+# Everything else goes to AmazonProvidedDNS.
+forward-zone:
+    name: "."
+    forward-addr: 10.0.0.2

@@ -1,0 +1,2 @@
+# Copy to domain.yml, which git ignores, and set the real delegated subdomain.
+domain: lab.example.com

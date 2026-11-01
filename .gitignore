@@ -39,3 +39,6 @@ backend.hcl
 
 # Temporary import blocks with live resource IDs
 terraform/lab/imports.tf
+
+# Real domain name (see ansible/group_vars/all/domain.yml.example)
+ansible/group_vars/all/domain.yml

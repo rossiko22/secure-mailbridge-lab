@@ -399,3 +399,39 @@ Public visibility raises the stakes on secrets. `gitleaks` runs in pre-commit an
 **Trade-off accepted.** A compromised fw-ips can send traffic anywhere. Restricting `output` is left as possible later hardening.
 
 **Verify once built.** After loading, the VPN, SSM and `ping 10.8.0.1` still work, and a test to a closed port on fw-ips logs `FW-INPUT-DROP`.
+
+## 29. Unbound configuration (2026-11-01)
+
+**Problem.** `mail.<domain>` must resolve only inside the VPN, while every other name keeps working, and the real domain must stay out of the public repo.
+
+**Options.** A: a `static` local zone for the exact name, with the domain in an untracked vars file. B: a `transparent` local zone. C: a local zone for all of `<domain>`, or the domain stored in SSM.
+
+**Chosen: A.** `static` answers that name and nothing else, so the `vpn` record and `_acme-challenge` still resolve publicly. C's wider zone would break the DNS-01 check. SSM adds a read and an IAM grant for a value that isn't a secret. `ip-freebind` lets Unbound start before its address exists. Query logging stays off, because §8 doesn't list it.
+
+**Trade-off accepted.** `make up` needs the vars file on the laptop. Scenario 2.2 can't show which names a stolen cert looked up, and Suricata can't see VPN DNS, because those queries end at fw-ips and only forwarded traffic is queued.
+
+**Verify once built.** From the VPN, `dig @10.0.1.10 mail.<domain> +short` returns 10.0.2.10 and a public name resolves.
+
+## 30. Private hosts keep AmazonProvidedDNS (2026-11-01)
+
+**Problem.** Private hosts use 10.0.0.2 by default, and security groups and NACLs don't filter that traffic. A compromised host can leak data through DNS without crossing fw-ips.
+
+**Options.** A: leave it and record a known gap. B: point DHCP at Unbound. C: turn off `enableDnsSupport`, or add Route 53 Resolver DNS Firewall.
+
+**Chosen: A.** B only changes the default, so a host can still query 10.0.0.2 directly, and fw-ips would need its own DNS pinned to avoid depending on itself. C changes more of the design while TCP 443 to any address remains an easier way out.
+
+**Trade-off accepted.** Private host DNS stays invisible until a fix is added. Scenario 2.2 tests the bypass and records it as a finding. Resolver query logging is the likely first fix.
+
+**Verify once built.** From a private host, `dig @10.0.0.2 example.com +short` answers, and no matching entry appears on fw-ips.
+
+## 31. No DNSSEC validation in Unbound (2026-11-01)
+
+**Problem.** Ubuntu's Unbound validates DNSSEC by default. AmazonProvidedDNS returned no `RRSIG` records for the root or `example.com`, even with `+dnssec`, so Unbound couldn't confirm the root keys and answered `SERVFAIL` for every forwarded name.
+
+**Options.** A: turn off validation with `module-config: "iterator"`. B: A, plus Route 53 Resolver DNSSEC validation on the VPC. C: resolve directly or use a public resolver, opening DNS out.
+
+**Chosen: A.** It's one line and keeps §6. The path to 10.0.0.2 stays inside AWS's network, and TLS means a forged address still fails the certificate check. C changes §4, the NACLs and §6. B needs testing and can be added later without undoing A.
+
+**Trade-off accepted.** Nothing in the lab validates DNSSEC, so Unbound trusts what 10.0.0.2 returns. Until production certs arrive in 2.6, `curl -k` skips the check that TLS would otherwise provide.
+
+**Verify once built.** From the VPN, `dig @10.0.1.10 example.com +short` returns addresses, and `sudo journalctl -u unbound` shows no new trust anchor failures.

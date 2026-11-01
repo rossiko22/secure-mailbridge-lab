@@ -151,7 +151,7 @@ Baseline outbound: 110 TCP 443 to 0.0.0.0/0 · 120 UDP 123 to 0.0.0.0/0 · 130 U
 
 ## 6. DNS & TLS
 
-- Unbound on fw-ips (10.0.1.10): private record `mail.<domain> → 10.0.2.10`, forwards everything else to AmazonProvidedDNS (10.0.0.2). The name resolves only inside the VPN.
+- Unbound on fw-ips (10.0.1.10): private record `mail.<domain> → 10.0.2.10`, forwards everything else to AmazonProvidedDNS (10.0.0.2). The name resolves only inside the VPN. Unbound serves VPN clients; private hosts keep AmazonProvidedDNS, which security groups and NACLs don't filter (known gap, tested in scenario 2.2). VPN DNS ends at fw-ips, so Suricata doesn't see it. Unbound doesn't validate DNSSEC, because AmazonProvidedDNS returns no signatures.
 - Certbot (`certbot-dns-route53`) obtains a Let's Encrypt cert via **DNS-01 challenge** using the proxy instance role — no public exposure and no stored API token. Nginx serves it; renewal via systemd timer.
 - **Staging certificates while building and rebuilding; switch to production certs once the setup is stable** (avoids Let's Encrypt rate limits).
 - DNS provider: **Route 53** public hosted zone in the `persistent` stack. `<domain>` is a subdomain of a domain Marko already owns, delegated by adding NS records for that subdomain at the parent's DNS provider. The parent domain stays where it is, and the real name stays out of this public repo.
